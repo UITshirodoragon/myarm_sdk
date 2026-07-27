@@ -8,7 +8,7 @@ from sensor_msgs.msg import JointState
 class JointStateDemo(Node):
     def __init__(self):
         super().__init__("myarm_joint_state_demo")
-        self._publisher = self.create_publisher(JointState, "joint_states", 10)
+        self._publisher = self.create_publisher(JointState, "joint_states", 5)
         self._start_time = self.get_clock().now()
         self.create_timer(0.1, self._publish)
 
