@@ -1,0 +1,10 @@
+MyArm M750 SDK development snapshot
+Copyright (c) 2026 Nguyen Hoang Dang Khoa
+
+No public license is granted by this development snapshot. All rights are
+reserved unless the copyright holder later replaces this file with an explicit
+open-source or commercial license.
+
+Third-party dependencies, ROS 2 packages, vendor SDKs, robot meshes, and the
+supplied reference documents remain subject to their own licenses. This file
+does not relicense those materials.

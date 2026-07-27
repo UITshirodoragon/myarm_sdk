@@ -1,0 +1,292 @@
+<?xml version="1.0"?>
+<robot name="myarm_m750">
+
+  <!--
+    MyArm M750 canonical PoE-compatible kinematic model v3.1.
+
+    KINEMATIC CONTRACT
+    ==================
+    1. The 6R model coordinates are q_ros and are shared by URDF, TF,
+       MoveIt 2, Pinocchio, PoE FK/IK, planning, and simulation.
+    2. No q2/q3 firmware calibration offset is embedded in joint origins.
+       The hardware/control adapter is responsible for:
+         q2_real = q2_ros + 10 deg
+         q3_real = q3_ros - 10 deg
+       and for the inverse mapping on feedback.
+    3. At q_ros = [0, 0, 0, 0, 0, 0], every arm kinematic frame from
+       base_link through flange_link has the same x/y/z orientation.
+    4. All six arm joint origins therefore have rpy="0 0 0", and each
+       URDF axis directly states the physical PoE axis:
+         q1: +Z, q2: +Y, q3: +Y, q4: +X, q5: +Y, q6: +X.
+    5. The 6R chain ends at flange_link. tool0 and the gripper are separate
+       descendants and are not part of the flange PoE chain.
+
+    MODEL-SPACE JOINT LIMITS
+    ========================
+      q1: [-165, +165] deg
+      q2: [ -90,  +90] deg
+      q3: [ -90,  +90] deg
+      q4: [-160, +160] deg
+      q5: [ -90,  +120] deg
+      q6: [-180, +180] deg
+
+    DEFAULT FIXED FRAMES
+    ====================
+      flange_link -> tool0:
+        xyz = [+0.118, 0, 0] m
+        rpy = [0, 0, 0] rad
+        This is a configurable application TCP convention.
+
+      flange_link -> gripper_base_link:
+        xyz = [+0.031, 0, 0] m
+        rpy = [0, +pi/2, 0] rad
+        This preserves the v2.2 gripper subtree orientation after the
+        flange frame was canonicalized.
+
+    VISUAL/COLLISION FRAME NOTE
+    ===========================
+    Joint frames were canonicalized without changing the intended nominal
+    mesh placement. Compensating rotations are therefore stored in each
+    link's visual/collision origin, never in the arm joint origins.
+
+    No inertial data are included because verified masses, centers of mass,
+    and inertia tensors are not available. Velocity and effort values remain
+    provisional planning defaults, not manufacturer-certified limits.
+  -->
+
+  <!-- ============================== Links ============================== -->
+
+  <link name="base_link">
+    <visual name="base_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/base_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="base_link_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/base_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="shoulder_link">
+    <visual name="shoulder_link_visual">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/shoulder_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="shoulder_link_collision">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/shoulder_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="upper_arm_link">
+    <visual name="upper_arm_link_visual">
+      <origin xyz="0 0 0" rpy="1.570796326794897 -1.570796326794897 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/upper_arm_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="upper_arm_link_collision">
+      <origin xyz="0 0 0" rpy="1.570796326794897 -1.570796326794897 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/upper_arm_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="lower_arm_link">
+    <visual name="lower_arm_link_visual">
+      <origin xyz="0 0 0" rpy="-1.570796326794897 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/lower_arm_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="lower_arm_link_collision">
+      <origin xyz="0 0 0" rpy="-1.570796326794897 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/lower_arm_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="forearm_link">
+    <visual name="forearm_link_visual">
+      <origin xyz="-0.009 0 0" rpy="-3.141592653589793 -1.570796326794897 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/forearm_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="forearm_link_collision">
+      <origin xyz="-0.009 0 0" rpy="-3.141592653589793 -1.570796326794897 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/forearm_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="wrist_link">
+    <visual name="wrist_link_visual">
+      <origin xyz="0 0 0" rpy="-1.570796326794897 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/wrist_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="wrist_link_collision">
+      <origin xyz="0 0 0" rpy="-1.570796326794897 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/wrist_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="flange_link"/>
+  <link name="tool0"/>
+
+  <link name="gripper_base_link">
+    <visual name="gripper_base_link_visual">
+      <origin xyz="0 0 -0.0427" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/gripper_base_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="gripper_base_link_collision">
+      <origin xyz="0 0 -0.0427" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/gripper_base_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="left_gripper_link">
+    <visual name="left_gripper_link_visual">
+      <origin xyz="0 -0.0079 0" rpy="0 3.141592653589793 -1.570796326794897"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/left_gripper_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="left_gripper_link_collision">
+      <origin xyz="0 -0.0079 0" rpy="0 3.141592653589793 -1.570796326794897"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/left_gripper_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <link name="right_gripper_link">
+    <visual name="right_gripper_link_visual">
+      <origin xyz="0 -0.0079 0" rpy="0 3.141592653589793 -1.570796326794897"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/right_gripper_link.dae" scale="1 1 1"/>
+      </geometry>
+    </visual>
+    <collision name="right_gripper_link_collision">
+      <origin xyz="0 -0.0079 0" rpy="0 3.141592653589793 -1.570796326794897"/>
+      <geometry>
+        <mesh filename="package://myarm_description/meshes/right_gripper_link.dae" scale="1 1 1"/>
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- ================= Canonical 6R PoE arm chain ================= -->
+
+  <!-- q1: shoulder pan, +Z axis -->
+  <joint name="shoulder_pan_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="shoulder_link"/>
+    <origin xyz="0 0 0.097900" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.879793265790644" upper="2.879793265790644" velocity="1.0" effort="1.0"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <!-- q2: shoulder lift, +Y axis -->
+  <joint name="shoulder_lift_joint" type="revolute">
+    <parent link="shoulder_link"/>
+    <child link="upper_arm_link"/>
+    <origin xyz="0 0 0.076000" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.570796326794897" upper="1.570796326794897" velocity="1.0" effort="1.0"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <!-- q3: elbow flex, +Y axis -->
+  <joint name="elbow_flex_joint" type="revolute">
+    <parent link="upper_arm_link"/>
+    <child link="lower_arm_link"/>
+    <origin xyz="0.057000 0 0.303000" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.570796326794897" upper="1.570796326794897" velocity="1.0" effort="1.0"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <!-- q4: forearm roll, +X axis -->
+  <joint name="forearm_roll_joint" type="revolute">
+    <parent link="lower_arm_link"/>
+    <child link="forearm_link"/>
+    <origin xyz="0.078800 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-2.792526803190927" upper="2.792526803190927" velocity="1.0" effort="1.0"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <!-- q5: wrist flex, +Y axis -->
+  <joint name="wrist_flex_joint" type="revolute">
+    <parent link="forearm_link"/>
+    <child link="wrist_link"/>
+    <origin xyz="0.249110 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.570796326794897" upper="2.0943951023931953" velocity="1.0" effort="1.0"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <!-- q6: wrist roll, +X axis -->
+  <joint name="wrist_roll_joint" type="revolute">
+    <parent link="wrist_link"/>
+    <child link="flange_link"/>
+    <origin xyz="0.079000 0 0" rpy="0 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-3.141592653589793" upper="3.141592653589793" velocity="1.0" effort="1.0"/>
+    <dynamics damping="0.0" friction="0.0"/>
+  </joint>
+
+  <!-- ================= TCP and end-effector subtree ================= -->
+
+  <!-- Application-configurable default TCP: +118 mm along flange +X. -->
+  <joint name="flange_to_tool0_joint" type="fixed">
+    <parent link="flange_link"/>
+    <child link="tool0"/>
+    <origin xyz="0.118000 0 0" rpy="0 -1.570796326794897 0"/>
+  </joint>
+
+  <!-- Keep the v2.2 gripper subtree orientation outside the canonical 6R chain. -->
+  <joint name="gripper_mount_joint" type="fixed">
+    <parent link="flange_link"/>
+    <child link="gripper_base_link"/>
+    <origin xyz="0.031000 0 0" rpy="0 1.570796326794897 0"/>
+  </joint>
+
+  <joint name="left_gripper_joint" type="prismatic">
+    <parent link="gripper_base_link"/>
+    <child link="left_gripper_link"/>
+    <origin xyz="0 0.008000 0" rpy="1.570796326794897 0 -3.141592653589793"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="0.0" upper="0.0345" velocity="0.05" effort="20.0"/>
+  </joint>
+
+  <joint name="right_gripper_joint" type="prismatic">
+    <parent link="gripper_base_link"/>
+    <child link="right_gripper_link"/>
+    <origin xyz="0 -0.008000 0" rpy="1.570796326794897 0 -3.141592653589793"/>
+    <axis xyz="0 0 -1"/>
+    <limit lower="0.0" upper="0.0345" velocity="0.05" effort="20.0"/>
+    <mimic joint="left_gripper_joint" multiplier="1.0" offset="0.0"/>
+  </joint>
+
+</robot>
