@@ -5,12 +5,12 @@ from rclpy.node import Node
 from sensor_msgs.msg import JointState
 
 
-class JointStateDemo(Node):
+class DummyJointStatePublisher(Node):
     def __init__(self):
-        super().__init__("myarm_joint_state_demo")
+        super().__init__("myarm_joint_state_publisher")
         self._publisher = self.create_publisher(JointState, "joint_states", 5)
         self._start_time = self.get_clock().now()
-        self.create_timer(0.1, self._publish)
+        self.create_timer(0.2, self._publish)
 
     def _publish(self):
         seconds = (self.get_clock().now() - self._start_time).nanoseconds / 1e9
@@ -35,7 +35,7 @@ class JointStateDemo(Node):
 
 def main():
     rclpy.init()
-    node = JointStateDemo()
+    node = DummyJointStatePublisher()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:

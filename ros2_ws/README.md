@@ -2,6 +2,19 @@
 
 Đặt các package ROS 2 trong `src/`.
 
+## Dùng Python core
+
+Trước khi chạy node ROS 2 cần cài `pycore` vào đúng Python environment:
+
+```bash
+cd ..
+python3 -m pip install -e '.[pycore]'
+cd ros2_ws
+```
+
+Sau bước này, các node ROS 2 có thể import `myarm_sdk` như một Python package
+bình thường.
+
 ## Cài dependency
 
 ROS 2 và `rosdep` được cài theo bản phân phối Linux/ROS 2 đang sử dụng, không
@@ -21,6 +34,16 @@ source install/setup.bash
 ```
 
 Các thư mục `build/`, `install/` và `log/` là output tạm, không commit.
+
+## Setup DDS WLAN
+
+```bash
+source /opt/ros/foxy/setup.bash
+
+export ROS_DOMAIN_ID=10
+export ROS_LOCALHOST_ONLY=0
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+```
 
 ## Demo RViz2
 

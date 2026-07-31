@@ -1,8 +1,8 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>myarm_joint_state_demo</name>
+  <name>myarm_joint_state_publisher</name>
   <version>0.0.1</version>
-  <description>Minimal animated joint-state demo for MyArm M750.</description>
+  <description>Minimal animated joint-state publisher for MyArm M750.</description>
   <maintainer email="maintainer@example.com">myarm_sdk maintainers</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_python</buildtool_depend>

@@ -1,7 +1,7 @@
 from glob import glob
 from setuptools import setup
 
-package_name = "myarm_joint_state_demo"
+package_name = "myarm_joint_state_publisher"
 
 setup(
     name=package_name,
@@ -16,9 +16,12 @@ setup(
     zip_safe=True,
     maintainer="myarm_sdk maintainers",
     maintainer_email="maintainer@example.com",
-    description="Minimal animated joint-state demo for MyArm M750.",
+    description="Minimal animated joint-state publisher for MyArm M750.",
     license="MIT",
     entry_points={
-        "console_scripts": ["joint_state_demo = myarm_joint_state_demo.publisher:main"],
+        "console_scripts": [
+            "dummy_joint_state_publisher = myarm_joint_state_publisher.dummy_publisher:main",
+            "command_joint_state_publisher = myarm_joint_state_publisher.command_publisher:main",
+            ],
     },
 )

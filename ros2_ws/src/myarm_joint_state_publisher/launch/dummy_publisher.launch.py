@@ -17,8 +17,8 @@ def generate_launch_description():
             output="screen",
         ),
         Node(
-            package="myarm_joint_state_demo",
-            executable="joint_state_demo",
+            package="myarm_joint_state_publisher",
+            executable="dummy_joint_state_publisher",
             output="screen",
         ),
     ])
