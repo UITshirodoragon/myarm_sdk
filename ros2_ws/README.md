@@ -62,4 +62,6 @@ ros2 launch myarm_kinematics ik_rviz_remote.launch.py
 ```
 
 Kinematics chạy qua `KinematicsService` ở 5 Hz. Bridge state hiện tại vẫn là
-mô phỏng, không gửi lệnh đến robot thật.
+mô phỏng, không gửi lệnh đến robot thật. `/joint_states` của bridge chỉ dành
+cho RViz; seed IK production phải lấy từ `/myarm/state/joint_state` do driver
+robot publish sau khi đã đổi hardware-space q sang canonical URDF q.

@@ -34,7 +34,7 @@
     ====================
       flange_link -> tool0:
         xyz = [+0.118, 0, 0] m
-        rpy = [0, 0, 0] rad
+        rpy = [0, -pi/2, 0] rad
         This is a configurable application TCP convention.
 
       flange_link -> gripper_base_link:
