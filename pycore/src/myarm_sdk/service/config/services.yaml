@@ -32,17 +32,23 @@ services:
     plugin_adapter: pinocchio
     plugin_config: plugin_adapter/kinematics/config/pinocchio_m750_poe.yaml
     update_rate_hz: 5.0
-    initial_named_pose: zero
+    initial_named_pose: home
     named_poses:
       zero:
         positions_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
       home:
         positions_rad: [0.0, -0.35, 0.70, 0.0, -0.35, 0.0]
+    seed:
+      source: last_commanded #measured_joint_state
+      measured_state_max_age_s: 0.5
+      allow_last_commanded_fallback: false
     topics:
       target_pose: /myarm/command/tcp_pose
+      measured_joint_state: /myarm/state/joint_state
       joint_target: /myarm/command/joint_target
-      tcp_pose: /myarm/state/tcp_pose
-      diagnostics: /myarm/diagnostics
+      current_tcp_pose: /myarm/state/tcp_pose
+      commanded_tcp_pose: /myarm/kinematics/commanded_tcp_pose
+      ik_status: /myarm/kinematics/ik_status
 
   trajectory:
     enabled: false

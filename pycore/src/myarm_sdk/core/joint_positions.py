@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Sequence, Tuple
 
@@ -16,4 +17,6 @@ class JointPositions:
         normalized = tuple(float(value) for value in values)
         if len(normalized) != 6:
             raise ValueError("MyArm M750 requires exactly 6 joint positions")
+        if not all(math.isfinite(value) for value in normalized):
+            raise ValueError("joint positions must be finite")
         object.__setattr__(self, "values", normalized)

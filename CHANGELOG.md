@@ -7,6 +7,9 @@
 - Thêm service manifest duy nhất `service/config/services.yaml`, service
   kinematics 5 Hz và named poses `zero`/`home`.
 - Đổi ROS package FK/IK từ `myarm_kinematics_demo` thành `myarm_kinematics`.
+- Hoàn thiện IK Pinocchio với URDF-backed joint convention/limits, home seed,
+  measured-q policy, full-pose/position-only mode, timeout, SVD singularity
+  diagnostics và structured `IKResult`.
 
 ## 0.0.1 - 2026-07-25
 

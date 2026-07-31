@@ -5,16 +5,37 @@ robot_description:
 frames:
   base: base_link
   tool: tool0
-joint_names:
-  - shoulder_pan_joint
-  - shoulder_lift_joint
-  - elbow_flex_joint
-  - forearm_roll_joint
-  - wrist_flex_joint
-  - wrist_roll_joint
+joint_order:
+  source: urdf
+  names:
+    - shoulder_pan_joint
+    - shoulder_lift_joint
+    - elbow_flex_joint
+    - forearm_roll_joint
+    - wrist_flex_joint
+    - wrist_roll_joint
+joint_convention:
+  positive_direction: right_hand_rule_about_urdf_axis
+joint_limits:
+  source: urdf
+  safety_margin_rad: 0.02
+  seed_outside_tolerance_rad: 0.002
 solver:
-  max_iterations: 100
+  task:
+    default_mode: full_pose
+    position_mask: [true, true, true]
+    orientation_mask: [true, true, true]
+  max_iterations: 150
+  max_solve_time_ms: 100.0
   position_tolerance_m: 0.001
   orientation_tolerance_rad: 0.02
   damping: 0.001
   step_size: 0.5
+  max_joint_step_rad: 0.10
+  characteristic_length_m: 0.20
+  singularity:
+    near_minimum_singular_value: 0.001
+    singular_minimum_singular_value: 0.000001
+    near_condition_number: 1000.0
+    singular_condition_number: 1000000.0
+    policy: reject

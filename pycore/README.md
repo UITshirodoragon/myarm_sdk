@@ -31,6 +31,26 @@ build/chạy ROS 2. Có thể override bằng biến môi trường `VENV_DIR`.
 
 Namespace import là `myarm_sdk`.
 
+## Kinematics contract
+
+`PinocchioKinematicsAdapter` lấy URDF làm source of truth cho thứ tự joint,
+axis dương, hard limit và transform `base_link -> tool0`. YAML chỉ chọn URDF,
+xác nhận `joint_order`, chọn base/TCP frame và đặt solver/safety policy.
+
+- Pose luôn là metres + quaternion `xyzw`; solver sử dụng SE(3), không dùng
+  Euler interpolation.
+- API đầy đủ là `IKRequest(target_pose, seed, policy)` và trả `IKResult` gồm
+  `q_solution`, residual position/orientation, iteration, SVD singularity và
+  failure reason.
+- `POSITION_ONLY` là mode riêng; orientation residual vẫn được report nhưng
+  không dùng làm điều kiện hội tụ.
+- `home` là initial pose an toàn; zero pose không được dùng làm seed mặc định
+  vì wrist singularity q5≈0.
+
+Feedback thật phải ở canonical model-space trước khi vào kinematics. Với
+MyArm M750 PoE URDF hiện tại, robot adapter quy đổi q2/q3 firmware ±10° trước
+khi trả `JointPositions` cho Pinocchio.
+
 ## Interfaces, adapters và services
 
 Các contract là `CameraInterface`, `ControllerInterface`,

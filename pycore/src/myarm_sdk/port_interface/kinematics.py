@@ -2,7 +2,7 @@
 
 from typing import Protocol
 
-from myarm_sdk.core import JointPositions, Pose
+from myarm_sdk.core import IKRequest, IKResult, JointPositions, Pose
 
 
 class KinematicsInterface(Protocol):
@@ -11,5 +11,5 @@ class KinematicsInterface(Protocol):
     def forward(self, joints: JointPositions) -> Pose:
         ...
 
-    def inverse(self, pose: Pose, seed: JointPositions) -> JointPositions:
+    def solve_ik(self, request: IKRequest) -> IKResult:
         ...

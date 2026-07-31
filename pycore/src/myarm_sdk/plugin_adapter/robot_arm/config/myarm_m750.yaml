@@ -1,0 +1,7 @@
+plugin_adapter: myarm_m750
+joint_convention:
+  # q_hardware = q_model + model_to_hardware_offsets_rad
+  # The canonical model contract is documented in myarm_m750_poe_v3_2.urdf.
+  model_to_hardware_offsets_rad:
+    [0.0, 0.17453292519943295, -0.17453292519943295, 0.0, 0.0, 0.0]
+  source: myarm_m750_poe_v3_2_urdf

@@ -55,6 +55,11 @@
 - Torque uses newton-meters.
 - Frame variables end with `_frame_id`.
 - Pose and transform names must identify source and target frames.
+- URDF is the source of truth for kinematic joint order, axes, hard limits and
+  fixed TCP transforms. Adapter configuration may validate those facts but must
+  not silently reverse a joint axis or duplicate a conflicting TCP transform.
+- Kinematics uses normalized `xyzw` quaternions and SE(3) residuals; do not
+  introduce Euler-angle interpolation into the FK/IK path.
 
 ## Data models
 
