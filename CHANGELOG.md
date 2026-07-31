@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Thêm optional kinematics dependencies (Pinocchio và pytransform3d), adapter
+  FK/IK và ROS 2 IK-to-RViz demo cho MyArm M750.
+
 ## 0.0.1 - 2026-07-25
 
 - Tạo skeleton tối giản cho `myarm_sdk`.

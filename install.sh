@@ -14,4 +14,5 @@ if [[ "${1:-}" == "--dev" ]]; then
 fi
 
 "$VENV_DIR/bin/python" -m pip install -r "$requirements_file"
+"$VENV_DIR/bin/python" -m pip install -e "$ROOT_DIR[pycore]"
 echo "Installed dependencies in $VENV_DIR"

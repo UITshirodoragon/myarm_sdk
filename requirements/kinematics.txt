@@ -1,0 +1,4 @@
+# Optional backend for MyArm M750 Pinocchio FK/IK and pose conversions.
+# The Python import remains `pinocchio`; the PyPI distribution is `pin`.
+pin==2.7.0
+pytransform3d

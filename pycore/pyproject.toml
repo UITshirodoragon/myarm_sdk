@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myarm-sdk"
+version = "0.0.1"
+description = "ROS-independent ports and adapters for MyArm M750."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  "numpy>=1.21",
+  "PyYAML>=5.4",
+]
+
+[project.optional-dependencies]
+robot-arm = ["pymycobot>=4.0"]
+camera = ["opencv-python>=4.5"]
+kinematics = [
+  "pin>=2.6",
+  "pytransform3d>=3.0",
+]
+dev = ["pytest>=7", "ruff>=0.4"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["myarm_sdk*"]
+
+[tool.setuptools.package-data]
+myarm_sdk = ["adapters/**/config/*.yaml"]

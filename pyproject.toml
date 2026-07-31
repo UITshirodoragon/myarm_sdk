@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "myarm-sdk"
+version = "0.0.1"
+description = "Small ROS 2 support core for MyArm M750."
+readme = "README.md"
+requires-python = ">=3.8"
+license = {file = "LICENSE"}
+dependencies = [
+  "numpy>=1.21",
+  "PyYAML>=5.4",
+]
+
+[project.optional-dependencies]
+# Keep this extra explicit so `pip install -e '.[pycore]'` is stable.
+pycore = []
+robot-arm = ["pymycobot>=4.0"]
+camera = ["opencv-python>=4.5"]
+kinematics = [
+  "pin>=2.6",
+  "pytransform3d>=3.0",
+]
+dev = [
+  "pytest>=7",
+  "ruff>=0.4",
+]
+
+[tool.setuptools]
+package-dir = {"" = "pycore/src"}
+
+[tool.setuptools.packages.find]
+where = ["pycore/src"]
+include = ["myarm_sdk*"]
+
+[tool.setuptools.package-data]
+myarm_sdk = ["adapters/**/config/*.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["pycore/tests"]

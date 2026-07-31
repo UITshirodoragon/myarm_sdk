@@ -17,3 +17,7 @@ logs/*.jsonl
 coverage.xml
 *.egg-info/
 .DS_Store
+
+# Local hardware settings; commit only *.example.yaml configuration files.
+pycore/src/adapters/**/config/*.local.yaml
+pycore/src/adapters/**/config/*_real.yaml
