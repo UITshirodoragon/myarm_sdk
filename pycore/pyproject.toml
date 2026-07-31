@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "myarm-sdk"
 version = "0.0.1"
-description = "ROS-independent ports and adapters for MyArm M750."
+description = "ROS-independent core, interfaces, adapters and services for MyArm M750."
 readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
@@ -28,6 +28,10 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["myarm_sdk*"]
+namespaces = false
 
 [tool.setuptools.package-data]
-myarm_sdk = ["adapters/**/config/*.yaml"]
+myarm_sdk = [
+  "plugin_adapter/**/config/*.yaml",
+  "service/config/*.yaml",
+]

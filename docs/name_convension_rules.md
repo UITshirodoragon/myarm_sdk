@@ -16,13 +16,17 @@
 
 ## Architecture
 
-- Domain code must not import ROS 2, pymycobot, serial, Pinocchio,
-  MuJoCo or other frameworks.
-- Application code depends only on domain models and ports.
-- Adapters implement ports and may depend on external libraries.
-- ROS 2 nodes only map ROS interfaces to application/core interfaces.
-- Hardware mapping and unit conversion belong in the hardware adapter.
-- Concrete implementations are selected only in the composition root.
+- `core` must not import ROS 2, pymycobot, serial, Pinocchio, MuJoCo or
+  another external framework.
+- `port_interface` defines ROS-independent contracts.
+- `plugin_adapter` implements a contract and may depend on an external library.
+- `service` owns one capability-oriented workflow and is the interface used by
+  ROS 2 nodes in this project stage.
+- ROS 2 nodes only map ROS messages, timers and publishers to services; they
+  must not call a plugin adapter directly.
+- Hardware mapping and unit conversion belong in the corresponding plugin adapter.
+- Each plugin adapter keeps its own `config/` directory. `service/config/services.yaml`
+  is the single service manifest that enables services and instances.
 
 ## Method naming
 

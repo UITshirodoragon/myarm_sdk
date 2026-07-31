@@ -4,11 +4,15 @@
 
 ## Dùng Python core
 
-Trước khi chạy node ROS 2 cần cài `pycore` vào đúng Python environment:
+Trước khi build/chạy node ROS 2 cần cài `pycore` vào đúng Python environment.
+Trong project này đó là `../myarm_venv`; venv này cần thấy các package ROS 2
+(ví dụ được tạo với `--system-site-packages`).
 
 ```bash
+source /opt/ros/<distro>/setup.bash
 cd ..
-python3 -m pip install -e '.[pycore]'
+./install.sh --kinematics
+../myarm_venv/bin/python -c "import myarm_sdk, rclpy; print('SDK and ROS Python are ready')"
 cd ros2_ws
 ```
 
@@ -29,9 +33,12 @@ rosdep install --from-paths src --ignore-src -r -y
 
 ```bash
 source /opt/ros/<distro>/setup.bash
-colcon build --symlink-install
+../myarm_venv/bin/python -m colcon build --symlink-install
 source install/setup.bash
 ```
+
+Dùng `../myarm_venv/bin/python -m colcon` bảo đảm console script của
+`myarm_kinematics` được tạo với cùng interpreter đã cài `myarm_sdk`.
 
 Các thư mục `build/`, `install/` và `log/` là output tạm, không commit.
 
@@ -51,7 +58,8 @@ Sau khi build, chạy:
 
 ```bash
 source install/setup.bash
-ros2 launch myarm_joint_state_demo demo.launch.py
+ros2 launch myarm_kinematics ik_rviz_remote.launch.py
 ```
 
-Đây là demo mô phỏng joint state, không gửi lệnh đến robot thật.
+Kinematics chạy qua `KinematicsService` ở 5 Hz. Bridge state hiện tại vẫn là
+mô phỏng, không gửi lệnh đến robot thật.

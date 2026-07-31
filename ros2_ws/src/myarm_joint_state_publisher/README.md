@@ -1,12 +1,13 @@
-# myarm_joint_state_demo
+# myarm_joint_state_publisher
 
-Demo không cần robot thật: publisher phát `joint_states`,
-`robot_state_publisher` phát TF từ URDF và RViz2 hiển thị robot.
+Bridge demo này nhận `/myarm/command/joint_target` từ kinematics service và
+phát `/joint_states` ở 5 Hz. `robot_state_publisher` dùng topic chuẩn này để
+phát TF cho RViz2.
 
 ```bash
 cd ros2_ws
 source /opt/ros/<distro>/setup.bash
 colcon build --symlink-install
 source install/setup.bash
-ros2 launch myarm_joint_state_demo demo.launch.py
+ros2 launch myarm_joint_state_publisher command_publisher.launch.py
 ```

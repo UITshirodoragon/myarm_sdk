@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "myarm-sdk"
 version = "0.0.1"
-description = "Small ROS 2 support core for MyArm M750."
+description = "ROS-independent core, interfaces, adapters and services for MyArm M750."
 readme = "README.md"
 requires-python = ">=3.8"
 license = {file = "LICENSE"}
@@ -34,9 +34,17 @@ package-dir = {"" = "pycore/src"}
 [tool.setuptools.packages.find]
 where = ["pycore/src"]
 include = ["myarm_sdk*"]
+namespaces = false
 
 [tool.setuptools.package-data]
-myarm_sdk = ["adapters/**/config/*.yaml"]
+myarm_sdk = [
+  "plugin_adapter/**/config/*.yaml",
+  "service/config/*.yaml",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["pycore/tests"]
+
+[tool.ruff.lint]
+# The SDK deliberately supports Python 3.8; keep typing aliases valid there.
+ignore = ["UP006", "UP007", "UP045"]

@@ -1,5 +1,5 @@
-"""ROS-independent Python contracts and adapters for the MyArm M750."""
+"""ROS-independent core, interfaces, adapters and services for MyArm M750."""
 
-from .model import JointPositions, Pose
+from .core import JointPositions, Pose
 
 __all__ = ["JointPositions", "Pose"]

@@ -1,0 +1,14 @@
+instance_id: cam01
+plugin_adapter: opencv
+device:
+  device_path: null
+  fallback_index: 0
+capture:
+  width: 640
+  height: 480
+  fps: 5.0
+  encoding: bgr8
+intrinsic_calibration:
+  camera_info_url: null
+frames:
+  optical_frame: cam01_optical_frame

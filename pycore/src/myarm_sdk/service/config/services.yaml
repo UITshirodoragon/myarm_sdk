@@ -1,0 +1,57 @@
+schema_version: 1
+
+services:
+  camera:
+    enabled: false
+    instances:
+      cam01:
+        enabled: false
+        plugin_adapter: opencv
+        plugin_config: plugin_adapter/camera/config/cam01.yaml
+        topic_namespace: /myarm/cameras/cam01
+        publish_rate_hz: 5.0
+        mount:
+          parent_frame: wrist_link
+          child_frame: cam01_link
+          translation_m: [0.0, 0.0, 0.0]
+          rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+      cam02:
+        enabled: false
+        plugin_adapter: opencv
+        plugin_config: plugin_adapter/camera/config/cam02.yaml
+        topic_namespace: /myarm/cameras/cam02
+        publish_rate_hz: 5.0
+        mount:
+          parent_frame: shoulder_link
+          child_frame: cam02_link
+          translation_m: [0.0, 0.0, 0.0]
+          rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+
+  kinematics:
+    enabled: true
+    plugin_adapter: pinocchio
+    plugin_config: plugin_adapter/kinematics/config/pinocchio_m750_poe.yaml
+    update_rate_hz: 5.0
+    initial_named_pose: zero
+    named_poses:
+      zero:
+        positions_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+      home:
+        positions_rad: [0.0, -0.35, 0.70, 0.0, -0.35, 0.0]
+    topics:
+      target_pose: /myarm/command/tcp_pose
+      joint_target: /myarm/command/joint_target
+      tcp_pose: /myarm/state/tcp_pose
+      diagnostics: /myarm/diagnostics
+
+  trajectory:
+    enabled: false
+    plugin_adapter: linear
+    plugin_config: plugin_adapter/trajectory/config/default.yaml
+    update_rate_hz: 5.0
+
+  controller:
+    enabled: false
+    plugin_adapter: memory
+    plugin_config: plugin_adapter/controller/config/default.yaml
+    update_rate_hz: 5.0

@@ -4,7 +4,7 @@ from sensor_msgs.msg import JointState
 
 
 class CommandJointStatePublisher(Node):
-    """Demo bridge from a commanded six-axis pose to RViz joint state."""
+    """Bridge a commanded six-axis target to the joint state used by RViz."""
 
     def __init__(self):
         super().__init__("myarm_command_joint_state_publisher")
@@ -15,7 +15,7 @@ class CommandJointStatePublisher(Node):
         )
         self._subscriber = self.create_subscription(
             msg_type=JointState,
-            topic="/myarm/command_joint_state",
+            topic="/myarm/command/joint_target",
             callback=self._command_callback,
             qos_profile=10,
         )
@@ -29,23 +29,24 @@ class CommandJointStatePublisher(Node):
             "left_gripper_joint",
         ]
         self._joint_state_position = [0.0] * 6
+        self.create_timer(0.2, self._publish)
         self.get_logger().info(
-            "Bridging /myarm/command_joint_state to /joint_states for RViz demo."
+            "Bridging /myarm/command/joint_target to /joint_states at 5 Hz for RViz."
         )
 
     def _command_callback(self, command: JointState):
         if len(command.position) != 6:
             self.get_logger().error(
-                "Expected six arm positions, received {}. Command ignored.".format(
-                    len(command.position)
-                )
+                f"Expected six arm positions, received {len(command.position)}. Command ignored."
             )
             return
 
         self._joint_state_position = list(command.position)
         self.get_logger().info(
-            "Received command: {}".format(self._joint_state_position)
+            f"Received command: {self._joint_state_position}"
         )
+
+    def _publish(self):
         message = JointState()
         message.header.stamp = self.get_clock().now().to_msg()
         message.name = self._joint_names

@@ -1,4 +1,5 @@
 from glob import glob
+
 from setuptools import setup
 
 package_name = "myarm_joint_state_publisher"
@@ -16,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer="myarm_sdk maintainers",
     maintainer_email="maintainer@example.com",
-    description="Minimal animated joint-state publisher for MyArm M750.",
+    description="Demo bridge from MyArm joint targets to joint states for RViz.",
     license="MIT",
     entry_points={
         "console_scripts": [

@@ -1,16 +1,24 @@
-.PHONY: install install-dev test clean
+VENV_DIR ?= ../myarm_venv
+
+.PHONY: install install-dev install-kinematics install-dev-kinematics test clean
 
 install:
-	./install.sh
+	VENV_DIR="$(VENV_DIR)" ./install.sh
 
 install-dev:
-	./install.sh --dev
+	VENV_DIR="$(VENV_DIR)" ./install.sh --dev
+
+install-kinematics:
+	VENV_DIR="$(VENV_DIR)" ./install.sh --kinematics
+
+install-dev-kinematics:
+	VENV_DIR="$(VENV_DIR)" ./install.sh --dev-kinematics
 
 test:
-	.venv/bin/python -m pytest
+	$(VENV_DIR)/bin/python -m pytest
 
 install-editable:
-	python3 -m pip install -e '.[pycore]'
+	$(VENV_DIR)/bin/python -m pip install -e '.[pycore,kinematics]'
 
 clean:
 	rm -rf .pytest_cache .ruff_cache .mypy_cache build dist *.egg-info
