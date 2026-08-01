@@ -4,7 +4,13 @@ from __future__ import annotations
 
 from typing import Protocol, Tuple
 
-from myarm_sdk.core import JointPositions, RobotArmCommand, RobotArmState
+from myarm_sdk.core import (
+    GripperCommand,
+    GripperState,
+    JointPositions,
+    RobotArmCommand,
+    RobotArmState,
+)
 
 
 class RobotArmInterface(Protocol):
@@ -60,3 +66,17 @@ class RobotArmInterface(Protocol):
 
     def read_motion_state(self) -> RobotArmState:
         """Read and cache whether the backend reports active motion."""
+
+    def read_gripper_state(self) -> GripperState:
+        """Read cached physical gripper opening in total fingertip metres."""
+
+    def enable_gripper(self) -> RobotArmState:
+        """Enable gripper actuation without moving either jaw."""
+
+    def write_gripper_opening(
+        self, opening_width_m: float, speed_scale: float = 0.5
+    ) -> GripperCommand:
+        """Command total fingertip opening in the range [0, 0.08] metres."""
+
+    def read_gripper_motion_state(self) -> GripperState:
+        """Read and cache whether the gripper reports active motion."""

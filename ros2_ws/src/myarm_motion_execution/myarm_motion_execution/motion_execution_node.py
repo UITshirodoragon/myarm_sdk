@@ -19,6 +19,7 @@ import rclpy
 from ament_index_python.packages import get_package_share_directory
 from control_msgs.action import FollowJointTrajectory
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from myarm_interfaces.msg import DriverJointSetpoint
 from myarm_sdk.core import (
     JointPositions,
     JointTrajectory,
@@ -33,8 +34,9 @@ from rclpy.action import ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
+from rclpy.qos import DurabilityPolicy, QoSProfile, qos_profile_sensor_data
 from sensor_msgs.msg import JointState
+from std_msgs.msg import String
 from std_srvs.srv import Trigger
 from trajectory_msgs.msg import JointTrajectory as RosJointTrajectory
 from trajectory_msgs.msg import JointTrajectoryPoint
@@ -94,9 +96,11 @@ class MyArmMotionExecutionNode(Node):
         self._last_event = None
         self._last_problem = ""
         self._last_planning_detail = ""
+        self._driver_safety_state = "unknown"
+        self._driver_safety_epoch = 0
 
         self._setpoint_publisher = self.create_publisher(
-            JointState, self._required_topic("internal_setpoint"), 10
+            DriverJointSetpoint, self._required_topic("internal_setpoint"), 10
         )
         self._preview_publisher = self.create_publisher(
             RosJointTrajectory, self._required_topic("preview"), 10
@@ -115,6 +119,15 @@ class MyArmMotionExecutionNode(Node):
             self._required_topic("measured_joint_state"),
             self._measured_joint_state_callback,
             qos_profile_sensor_data,
+        )
+        self._driver_safety_subscription = self.create_subscription(
+            String,
+            self._required_topic("driver_safety_state"),
+            self._driver_safety_state_callback,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL),
+        )
+        self._driver_stop_client = self.create_client(
+            Trigger, self._required_topic("driver_stop_service")
         )
         self._cancel_service = self.create_service(
             Trigger,
@@ -238,6 +251,28 @@ class MyArmMotionExecutionNode(Node):
             self._measured_joint_positions = positions
             self._measured_received_at_s = time.monotonic()
 
+    def _driver_safety_state_callback(self, message: String) -> None:
+        fields = {}
+        for part in message.data.split(";"):
+            key, separator, value = part.partition("=")
+            if separator:
+                fields[key] = value
+        try:
+            epoch = int(fields["epoch"])
+        except (KeyError, TypeError, ValueError):
+            self._record_problem("invalid driver safety-state message")
+            return
+        state = fields.get("state", "unknown")
+        with self._state_lock:
+            self._driver_safety_state = state
+            self._driver_safety_epoch = epoch
+        if state != "armed" and self._motion_execution.state == MotionExecutionState.EXECUTING:
+            self._motion_execution.fault(
+                MotionExecutionFailureReason.EXTERNAL_FAULT,
+                detail=f"driver safety gate closed: {message.data}",
+            )
+            self._action_completion.set()
+
     def _joint_goal_callback(self, message: JointState) -> None:
         """Accept a public end-point goal only when no execution is active."""
         try:
@@ -291,23 +326,33 @@ class MyArmMotionExecutionNode(Node):
 
         event = None
         if self._motion_execution.state == MotionExecutionState.EXECUTING:
-            try:
-                event = self._motion_execution.tick(
-                    now_monotonic_s=now_monotonic_s,
-                    actual_positions=actual_positions,
-                )
-            except Exception as error:  # noqa: BLE001 - surface executor faults to ROS.
-                detail = f"motion-execution timer fault: {error}"
-                self._record_problem(detail)
+            if actual_positions is None:
+                detail = "fresh measured feedback lost during execution"
                 self._motion_execution.fault(
                     MotionExecutionFailureReason.EXTERNAL_FAULT,
                     detail=detail,
-                    hold_position=actual_positions,
                 )
-                event = self._motion_execution.tick(
-                    now_monotonic_s=now_monotonic_s,
-                    actual_positions=actual_positions,
-                )
+                self._request_driver_safe_stop()
+                self._action_completion.set()
+            else:
+                try:
+                    event = self._motion_execution.tick(
+                        now_monotonic_s=now_monotonic_s,
+                        actual_positions=actual_positions,
+                    )
+                except Exception as error:  # noqa: BLE001 - surface executor faults to ROS.
+                    detail = f"motion-execution timer fault: {error}"
+                    self._record_problem(detail)
+                    self._motion_execution.fault(
+                        MotionExecutionFailureReason.EXTERNAL_FAULT,
+                        detail=detail,
+                        hold_position=actual_positions,
+                    )
+                    self._request_driver_safe_stop()
+                    event = self._motion_execution.tick(
+                        now_monotonic_s=now_monotonic_s,
+                        actual_positions=actual_positions,
+                    )
 
         if event is not None:
             with self._state_lock:
@@ -394,6 +439,10 @@ class MyArmMotionExecutionNode(Node):
         origin: str,
     ) -> Tuple[bool, str]:
         """Start only from current feedback; never synthesize a jump to q0."""
+        with self._state_lock:
+            safety_state = self._driver_safety_state
+        if safety_state != "armed":
+            return False, f"driver safety gate is {safety_state}; operator re-arm is required"
         start_error_rad = self._maximum_position_error(
             trajectory.points[0].positions, actual_positions
         )
@@ -493,6 +542,7 @@ class MyArmMotionExecutionNode(Node):
                 if goal_handle.is_cancel_requested:
                     current, _ = self._fresh_measured_joint_positions(time.monotonic())
                     self._motion_execution.cancel(hold_position=current)
+                    self._request_driver_safe_stop()
                     self._action_completion.set()
                 if self._action_completion.wait(timeout=0.05):
                     break
@@ -581,13 +631,21 @@ class MyArmMotionExecutionNode(Node):
         return value
 
     def _publish_setpoint(self, setpoint) -> None:
-        """Publish q/qdot only; JointState.effort never carries qddot."""
-        message = JointState()
+        """Publish one epoch-bound private driver setpoint."""
+        with self._state_lock:
+            safety_epoch = self._driver_safety_epoch
+        message = DriverJointSetpoint()
         message.header.stamp = self.get_clock().now().to_msg()
-        message.name = list(self._joint_names)
-        message.position = list(setpoint.positions.values)
-        message.velocity = list(setpoint.velocities.values)
+        message.safety_epoch = safety_epoch
+        message.joint_names = list(self._joint_names)
+        message.positions = list(setpoint.positions.values)
+        message.speed_scale = 0.5
         self._setpoint_publisher.publish(message)
+
+    def _request_driver_safe_stop(self) -> None:
+        """Ask the driver, the serial owner, to close its safety gate and stop."""
+        if self._driver_stop_client.service_is_ready():
+            self._driver_stop_client.call_async(Trigger.Request())
 
     def _publish_preview(self, trajectory: JointTrajectory) -> None:
         message = RosJointTrajectory()
@@ -734,6 +792,7 @@ class MyArmMotionExecutionNode(Node):
         response.success = result.accepted
         response.message = result.detail
         if result.accepted:
+            self._request_driver_safe_stop()
             self._action_completion.set()
         else:
             self._record_problem(f"cancel rejected: {result.detail}")
@@ -815,6 +874,7 @@ class MyArmMotionExecutionNode(Node):
         self._action_completion.set()
         if self._motion_execution.state == MotionExecutionState.EXECUTING:
             self._motion_execution.cancel()
+            self._request_driver_safe_stop()
         self._action_server.destroy()
         return super().destroy_node()
 

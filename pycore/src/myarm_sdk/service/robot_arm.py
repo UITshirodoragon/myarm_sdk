@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Tuple
 
 from myarm_sdk.core import (
+    GripperCommand,
+    GripperState,
     JointMetadata,
     JointPositions,
     RobotArmCommand,
@@ -43,6 +45,15 @@ class RobotArmFeedback:
     feedback_error: Optional[str]
 
 
+@dataclass(frozen=True)
+class RobotArmGripperFeedback:
+    """One non-throwing gripper feedback read from the RobotArm capability."""
+
+    state: GripperState
+    feedback_updated: bool
+    feedback_error: Optional[str]
+
+
 class RobotArmService:
     """Own one robot-arm port as a feedback/lifecycle and setpoint gateway.
 
@@ -58,6 +69,7 @@ class RobotArmService:
         feedback_stale_after_s: float,
         default_speed_scale: float = 0.5,
         accepts_execution_setpoints: bool = False,
+        accepts_gripper_commands: bool = False,
         power_on_on_connect: bool = False,
         joint_metadata: Tuple[JointMetadata, ...] = (),
     ) -> None:
@@ -74,7 +86,10 @@ class RobotArmService:
             raise TypeError("accepts_execution_setpoints must be boolean")
         if not isinstance(power_on_on_connect, bool):
             raise TypeError("power_on_on_connect must be boolean")
+        if not isinstance(accepts_gripper_commands, bool):
+            raise TypeError("accepts_gripper_commands must be boolean")
         self._accepts_execution_setpoints = accepts_execution_setpoints
+        self._accepts_gripper_commands = accepts_gripper_commands
         self._power_on_on_connect = power_on_on_connect
         self._joint_metadata = self._validate_joint_metadata(
             joint_metadata, self._joint_names
@@ -137,6 +152,20 @@ class RobotArmService:
             transport_config.get("allow_physical_motion", False),
             "robot_arm transport.allow_physical_motion",
         )
+        gripper_config = cls._mapping(
+            service_config.get("gripper"), "robot_arm gripper"
+        )
+        gripper_enabled = cls._boolean(
+            gripper_config.get("enabled"), "robot_arm gripper.enabled"
+        )
+        allow_physical_gripper_actuation = cls._boolean(
+            gripper_config.get("allow_physical_actuation", False),
+            "robot_arm gripper.allow_physical_actuation",
+        )
+        gripper_initial_opening_width_m = cls._opening_width(
+            gripper_config.get("initial_opening_width_m", 0.0),
+            "robot_arm gripper.initial_opening_width_m",
+        )
         feedback_config = cls._mapping(
             service_config.get("feedback"), "robot_arm feedback"
         )
@@ -160,16 +189,24 @@ class RobotArmService:
                     adapter_config.get("start_powered", True),
                     "fake_robot_arm start_powered",
                 ),
+                initial_gripper_opening_width_m=gripper_initial_opening_width_m,
             )
             accepts_execution_setpoints = accept_internal_setpoints
+            accepts_gripper_commands = gripper_enabled
         else:
             robot_arm, power_on_on_connect = cls._physical_robot_from_config(
                 adapter_config=adapter_config,
                 joint_metadata=joint_metadata,
+                gripper_config=gripper_config,
                 vendor_factory=vendor_factory,
             )
             accepts_execution_setpoints = (
                 accept_internal_setpoints and allow_physical_motion
+            )
+            accepts_gripper_commands = (
+                gripper_enabled
+                and allow_physical_motion
+                and allow_physical_gripper_actuation
             )
 
         return cls(
@@ -178,6 +215,7 @@ class RobotArmService:
             feedback_stale_after_s=feedback_stale_after_s,
             default_speed_scale=default_speed_scale,
             accepts_execution_setpoints=accepts_execution_setpoints,
+            accepts_gripper_commands=accepts_gripper_commands,
             power_on_on_connect=power_on_on_connect,
             joint_metadata=joint_metadata,
         )
@@ -214,6 +252,11 @@ class RobotArmService:
     def accepts_execution_setpoints(self) -> bool:
         """Whether the driver may accept its internal executor setpoint stream."""
         return self._accepts_execution_setpoints
+
+    @property
+    def accepts_gripper_commands(self) -> bool:
+        """Whether physical or fake gripper commands are currently authorized."""
+        return self._accepts_gripper_commands
 
     def connect(self) -> RobotArmState:
         """Connect explicitly; optional power-on occurs only after success."""
@@ -284,6 +327,45 @@ class RobotArmService:
                 speed_scale=normalized_speed_scale,
             )
 
+    def read_gripper_feedback(self) -> RobotArmGripperFeedback:
+        """Read gripper feedback without allowing a driver timer to terminate."""
+        with self._operation_lock:
+            try:
+                state = self._robot_arm.read_gripper_state()
+                return RobotArmGripperFeedback(
+                    state=state, feedback_updated=True, feedback_error=None
+                )
+            except RobotArmError as error:
+                cached = self._robot_arm.state.gripper_state or GripperState()
+                return RobotArmGripperFeedback(
+                    state=cached, feedback_updated=False, feedback_error=str(error)
+                )
+
+    def enable_gripper(self) -> RobotArmState:
+        with self._operation_lock:
+            if not self._accepts_gripper_commands:
+                raise RobotArmServiceError(
+                    "gripper commands are disabled by robot_arm transport policy"
+                )
+            return self._robot_arm.enable_gripper()
+
+    def send_gripper_opening(
+        self, opening_width_m: float, speed_scale: Optional[float] = None
+    ) -> GripperCommand:
+        with self._operation_lock:
+            if not self._accepts_gripper_commands:
+                raise RobotArmServiceError(
+                    "gripper commands are disabled by robot_arm transport policy"
+                )
+            normalized_speed_scale = (
+                self._default_speed_scale
+                if speed_scale is None
+                else self._speed_scale(speed_scale)
+            )
+            return self._robot_arm.write_gripper_opening(
+                opening_width_m, speed_scale=normalized_speed_scale
+            )
+
     def stop(self) -> RobotArmState:
         """Request the backend software motion stop."""
         with self._operation_lock:
@@ -324,6 +406,7 @@ class RobotArmService:
         cls,
         adapter_config: Mapping[str, Any],
         joint_metadata: Tuple[JointMetadata, ...],
+        gripper_config: Mapping[str, Any],
         vendor_factory: Optional[Callable[..., Any]],
     ) -> Tuple[MyArmM750RobotArm, bool]:
         connection = cls._mapping(
@@ -367,6 +450,17 @@ class RobotArmService:
                     "myarm_m750_robot_arm connection.debug",
                 ),
                 model_to_hardware_offsets_rad=offsets,
+                gripper_enabled=cls._boolean(
+                    gripper_config.get("enabled"), "robot_arm gripper.enabled"
+                ),
+                gripper_vendor_value_at_closed=cls._gripper_vendor_value(
+                    gripper_config.get("vendor_value_at_closed"),
+                    "robot_arm gripper.vendor_value_at_closed",
+                ),
+                gripper_vendor_value_at_open=cls._gripper_vendor_value(
+                    gripper_config.get("vendor_value_at_open"),
+                    "robot_arm gripper.vendor_value_at_open",
+                ),
                 vendor_factory=vendor_factory,
             ),
             power_on_on_connect,
@@ -514,6 +608,26 @@ class RobotArmService:
         if not math.isfinite(normalized) or not 0.0 < normalized <= 1.0:
             raise ValueError("speed_scale must be finite and in the range (0, 1]")
         return normalized
+
+    @staticmethod
+    def _opening_width(value: Any, name: str) -> float:
+        if isinstance(value, bool):
+            raise TypeError(f"{name} must be numeric, not boolean")
+        try:
+            normalized = float(value)
+        except (TypeError, ValueError) as error:
+            raise TypeError(f"{name} must be numeric") from error
+        if not math.isfinite(normalized) or not 0.0 <= normalized <= 0.08:
+            raise ValueError(f"{name} must be in [0, 0.08] metres")
+        return normalized
+
+    @staticmethod
+    def _gripper_vendor_value(value: Any, name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"{name} must be an integer")
+        if not 0 <= value <= 100:
+            raise ValueError(f"{name} must be in the range 0..100")
+        return value
 
     @staticmethod
     def _validate_joint_names(joint_names: Any) -> Tuple[str, ...]:

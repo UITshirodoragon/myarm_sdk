@@ -34,6 +34,9 @@ class KinematicsStep:
     """One 5 Hz service cycle with distinct command and measured state."""
 
     commanded_joint_positions: JointPositions
+    # Present only for a successfully solved, explicitly requested target.
+    # The configured home pose is an IK seed, never an implicit motion command.
+    joint_goal: Optional[JointPositions]
     commanded_tcp_pose: Pose
     measured_joint_positions: Optional[JointPositions]
     measured_tcp_pose: Optional[Pose]
@@ -73,14 +76,13 @@ class KinematicsService:
         self._default_ik_policy = default_ik_policy
         self._seed_policy = seed_policy
         self._joint_metadata = joint_metadata
-        self._last_commanded_joint_positions = initial_joint_positions
-        self._last_commanded_tcp_pose = self._kinematics.forward(
+        self._last_safe_ik_seed = initial_joint_positions
+        self._last_safe_tcp_pose = self._kinematics.forward(
             initial_joint_positions
         )
         self._measured_joint_positions: Optional[JointPositions] = None
         self._measured_received_at_s: Optional[float] = None
         self._pending_target: Optional[_PendingTarget] = None
-        self._initial_command_pending = True
         self._last_result: Optional[IKResult] = None
 
     @classmethod
@@ -167,16 +169,23 @@ class KinematicsService:
         )
 
         named_poses = cls._mapping(named_pose_config.get("named_poses"), "named_poses")
-        initial_pose_name = str(service_config["initial_named_pose"])
+        initial_pose_name_value = service_config.get("initial_seed_named_pose")
+        if initial_pose_name_value is None:
+            # Compatibility for an older development manifest.  The value is
+            # still only a seed; it is never emitted as a command.
+            initial_pose_name_value = service_config.get("initial_named_pose")
+        if not isinstance(initial_pose_name_value, str) or not initial_pose_name_value:
+            raise ValueError("kinematics initial_seed_named_pose must be non-empty")
+        initial_pose_name = initial_pose_name_value
         try:
             initial_values = named_poses[initial_pose_name]["positions_rad"]
         except KeyError as error:
             raise ValueError(
-                f"Unknown initial_named_pose '{initial_pose_name}'"
+                f"Unknown initial_seed_named_pose '{initial_pose_name}'"
             ) from error
         initial_joint_positions = JointPositions(initial_values)
         if kinematics.joint_limit_violations(initial_joint_positions):
-            raise ValueError("initial_named_pose violates URDF joint limits")
+            raise ValueError("initial_seed_named_pose violates URDF joint limits")
 
         seed_config = cls._mapping(service_config.get("seed"), "kinematics seed")
         seed_policy = IKSeedPolicy(
@@ -275,7 +284,8 @@ class KinematicsService:
         )
 
         target_processed = self._pending_target is not None
-        command_updated = self._initial_command_pending
+        command_updated = False
+        joint_goal: Optional[JointPositions] = None
         result: Optional[IKResult] = None
         seed_source: Optional[IKSeedSource] = None
         if self._pending_target is not None:
@@ -293,17 +303,18 @@ class KinematicsService:
                     )
                 )
                 if result.converged and result.q_solution is not None:
-                    self._last_commanded_joint_positions = result.q_solution
-                    self._last_commanded_tcp_pose = self._kinematics.forward(
+                    self._last_safe_ik_seed = result.q_solution
+                    self._last_safe_tcp_pose = self._kinematics.forward(
                         result.q_solution
                     )
                     command_updated = True
+                    joint_goal = result.q_solution
             self._last_result = result
 
-        self._initial_command_pending = False
         return KinematicsStep(
-            commanded_joint_positions=self._last_commanded_joint_positions,
-            commanded_tcp_pose=self._last_commanded_tcp_pose,
+            commanded_joint_positions=self._last_safe_ik_seed,
+            commanded_tcp_pose=self._last_safe_tcp_pose,
+            joint_goal=joint_goal,
             measured_joint_positions=self._measured_joint_positions,
             measured_tcp_pose=measured_pose,
             measured_state_age_s=measured_age_s,
@@ -320,7 +331,7 @@ class KinematicsService:
         if pending.explicit_seed is not None:
             return pending.explicit_seed, IKSeedSource.EXPLICIT
         if self._seed_policy.source is IKSeedSource.LAST_COMMANDED:
-            return self._last_commanded_joint_positions, IKSeedSource.LAST_COMMANDED
+            return self._last_safe_ik_seed, IKSeedSource.LAST_COMMANDED
         if (
             self._seed_policy.source is IKSeedSource.MEASURED_JOINT_STATE
             and self._measured_joint_positions is not None
@@ -328,7 +339,7 @@ class KinematicsService:
         ):
             return self._measured_joint_positions, IKSeedSource.MEASURED_JOINT_STATE
         if self._seed_policy.allow_last_commanded_fallback:
-            return self._last_commanded_joint_positions, IKSeedSource.LAST_COMMANDED
+            return self._last_safe_ik_seed, IKSeedSource.LAST_COMMANDED
         return None, self._seed_policy.source
 
     def _seed_unavailable_result(self) -> IKResult:

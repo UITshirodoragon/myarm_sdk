@@ -83,7 +83,7 @@ def _service(kinematics, seed_policy):
     )
 
 
-def test_service_publishes_home_then_uses_last_commanded_seed_when_configured():
+def test_service_keeps_home_as_seed_without_publishing_an_implicit_goal():
     kinematics = FakeKinematics()
     service = _service(
         kinematics,
@@ -91,7 +91,8 @@ def test_service_publishes_home_then_uses_last_commanded_seed_when_configured():
     )
 
     initial = service.step(now_monotonic_s=1.0)
-    assert initial.command_updated is True
+    assert initial.command_updated is False
+    assert initial.joint_goal is None
     assert initial.commanded_joint_positions.values == (0.0, -0.35, 0.70, 0.0, -0.35, 0.0)
 
     service.set_target_pose(
@@ -101,6 +102,7 @@ def test_service_publishes_home_then_uses_last_commanded_seed_when_configured():
 
     assert target.target_processed is True
     assert target.command_updated is True
+    assert target.joint_goal == target.commanded_joint_positions
     assert target.seed_source is IKSeedSource.LAST_COMMANDED
     assert kinematics.requests[-1].seed == initial.commanded_joint_positions
     assert target.ik_result is not None and target.ik_result.converged is True
@@ -169,6 +171,6 @@ def test_service_manifest_selects_home_and_real_measured_seed_policy():
 
     assert kinematics["enabled"] is True
     assert kinematics["update_rate_hz"] == 5.0
-    assert kinematics["initial_named_pose"] == "home"
+    assert kinematics["initial_seed_named_pose"] == "home"
     assert kinematics["seed"]["source"] == "measured_joint_state"
     assert kinematics["seed"]["allow_last_commanded_fallback"] is False

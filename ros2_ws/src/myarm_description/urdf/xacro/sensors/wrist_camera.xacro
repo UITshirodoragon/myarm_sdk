@@ -1,0 +1,35 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!--
+    Frame-only wrist camera attachment.
+
+    The mount pose is an application calibration input, not part of the 6R
+    kinematic model.  ``camera_link -> camera_optical_frame`` uses the ROS
+    optical-frame convention (x right, y down, z forward).  Add verified mesh
+    and collision geometry in a later component revision.
+  -->
+  <xacro:macro name="myarm_wrist_camera"
+               params="parent_link mount_xyz:='0 0 0' mount_rpy:='0 0 0'
+                       camera_xyz:='0 0 0' camera_rpy:='0 0 0'">
+    <link name="wrist_camera_mount_link"/>
+    <joint name="gripper_to_wrist_camera_mount_joint" type="fixed">
+      <parent link="${parent_link}"/>
+      <child link="wrist_camera_mount_link"/>
+      <origin xyz="${mount_xyz}" rpy="${mount_rpy}"/>
+    </joint>
+
+    <link name="wrist_camera_link"/>
+    <joint name="wrist_camera_mount_joint" type="fixed">
+      <parent link="wrist_camera_mount_link"/>
+      <child link="wrist_camera_link"/>
+      <origin xyz="${camera_xyz}" rpy="${camera_rpy}"/>
+    </joint>
+
+    <link name="wrist_camera_optical_frame"/>
+    <joint name="wrist_camera_optical_joint" type="fixed">
+      <parent link="wrist_camera_link"/>
+      <child link="wrist_camera_optical_frame"/>
+      <origin xyz="0 0 0" rpy="-1.570796326794897 0 -1.570796326794897"/>
+    </joint>
+  </xacro:macro>
+</robot>

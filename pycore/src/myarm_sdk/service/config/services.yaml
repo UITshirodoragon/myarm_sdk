@@ -32,6 +32,18 @@ services:
     initial_named_pose: home
     feedback:
       stale_after_s: 0.5
+    # Public opening is the total distance between the two fingertips.  The
+    # physical adapter maps it to the vendor 0..100 scale only when hardware
+    # actuation has separately been enabled.
+    gripper:
+      enabled: true
+      # Pymycobot exposes no verified independent gripper stop. Keep physical
+      # actuation disabled even if arm motion is later enabled, until it has
+      # been validated on the real hardware.
+      allow_physical_actuation: false
+      initial_opening_width_m: 0.0
+      vendor_value_at_closed: 0
+      vendor_value_at_open: 100
     transport:
       default_speed_scale: 0.5
       # This is a private transport stream from MotionExecutionService, not a
@@ -45,7 +57,11 @@ services:
       measured_joint_state: /myarm/state/joint_state
       visualization_joint_state: /joint_states
       diagnostics: /myarm/robot/diagnostics
+      safety_state: /myarm/robot/safety_state
+      gripper_command: /myarm/gripper/command
+      gripper_state: /myarm/gripper/state
       stop_service: /myarm/robot/stop
+      rearm_service: /myarm/robot/rearm
       power_on_service: /myarm/robot/power_on
       power_off_service: /myarm/robot/power_off
 
@@ -80,7 +96,9 @@ services:
     plugin_adapter: pinocchio
     plugin_config: plugin_adapter/kinematics/config/pinocchio_m750_poe.yaml
     update_rate_hz: 5.0
-    initial_named_pose: home
+    # Used only until fresh measured feedback exists. It is never published as
+    # a joint-goal command.
+    initial_seed_named_pose: home
     seed:
       source: measured_joint_state
       measured_state_max_age_s: 0.5
@@ -114,6 +132,8 @@ services:
       joint_goal: /myarm/command/joint_goal
       measured_joint_state: /myarm/state/joint_state
       internal_setpoint: /myarm/internal/driver_joint_setpoint
+      driver_safety_state: /myarm/robot/safety_state
+      driver_stop_service: /myarm/robot/stop
       preview: /myarm/trajectory/preview
       diagnostics: /myarm/motion_execution/diagnostics
       follow_joint_trajectory: /myarm/follow_joint_trajectory

@@ -108,8 +108,8 @@ class MyArmKinematicsNode(Node):
             self.get_logger().error(f"Kinematics backend error: {error}")
             return
 
-        if step.command_updated:
-            self._publish_joint_goal(step.commanded_joint_positions)
+        if step.joint_goal is not None:
+            self._publish_joint_goal(step.joint_goal)
             self._publish_pose(
                 self._commanded_tcp_pose_publisher, step.commanded_tcp_pose
             )

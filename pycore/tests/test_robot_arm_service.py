@@ -23,6 +23,8 @@ class _FakeMyArmMControl:
         self.powered = 0
         self.angles = [0.0, 10.0, -10.0, 0.0, 0.0, 0.0]
         self.power_on_calls = 0
+        self.gripper_enabled = False
+        self.gripper_value = 0
 
     def set_fresh_mode(self, mode):
         self.fresh_mode = mode
@@ -53,6 +55,20 @@ class _FakeMyArmMControl:
         return 1
 
     def is_moving(self):
+        return 0
+
+    def set_gripper_enabled(self):
+        self.gripper_enabled = True
+        return 1
+
+    def get_gripper_value(self):
+        return self.gripper_value
+
+    def set_gripper_value(self, value, _speed):
+        self.gripper_value = value
+        return 1
+
+    def is_gripper_moving(self):
         return 0
 
 
@@ -140,6 +156,7 @@ def test_fake_robot_service_reads_feedback_then_accepts_execution_setpoint():
     assert service.joint_names[0] == "shoulder_pan_joint"
     assert service.state.measured_joint_positions == HOME
     assert service.accepts_execution_setpoints is True
+    assert service.accepts_gripper_commands is True
     assert service.update_rate_hz == 5.0
 
     feedback = service.read_feedback(
@@ -153,6 +170,12 @@ def test_fake_robot_service_reads_feedback_then_accepts_execution_setpoint():
     assert feedback.measured_joint_positions == HOME
     assert command.requested_joint_positions == TARGET
     assert service.state.measured_joint_positions == TARGET
+
+    gripper_command = service.send_gripper_opening(0.08)
+    gripper_feedback = service.read_gripper_feedback()
+    assert gripper_command.accepted_opening_width_m == pytest.approx(0.08)
+    assert gripper_feedback.feedback_updated is True
+    assert gripper_feedback.state.opening_width_m == pytest.approx(0.08)
 
 
 def test_feedback_and_setpoint_gateway_report_failures_without_queuing():
@@ -240,6 +263,41 @@ def test_physical_profile_defers_power_until_an_explicit_service_request():
     assert state.is_connected is True
     assert state.is_powered is False
     assert vendor_instances[0].power_on_calls == 0
+
+
+def test_physical_gripper_maps_total_opening_to_vendor_scale_after_explicit_opt_in():
+    config = _config()
+    physical_service_config = deepcopy(config["services"]["robot_arm"])
+    physical_service_config["plugin_adapter"] = "myarm_m750_robot_arm"
+    physical_service_config["plugin_config"] = (
+        "plugin_adapter/robot_arm/config/myarm_m750_robot_arm.yaml"
+    )
+    physical_service_config["transport"]["allow_physical_motion"] = True
+    physical_service_config["gripper"]["allow_physical_actuation"] = True
+    vendor_instances = []
+
+    def vendor_factory(*args, **kwargs):
+        vendor = _FakeMyArmMControl(*args, **kwargs)
+        vendor_instances.append(vendor)
+        return vendor
+
+    service = RobotArmService.from_config(
+        physical_service_config,
+        _package_share_directory,
+        config["robot"],
+        vendor_factory=vendor_factory,
+    )
+    service.connect()
+    service.power_on()
+    service.enable_gripper()
+    command = service.send_gripper_opening(0.08)
+    feedback = service.read_gripper_feedback()
+
+    assert service.accepts_gripper_commands is True
+    assert vendor_instances[0].gripper_enabled is True
+    assert vendor_instances[0].gripper_value == 100
+    assert command.accepted_opening_width_m == pytest.approx(0.08)
+    assert feedback.state.opening_width_m == pytest.approx(0.08)
 
 
 def test_connect_can_power_only_after_a_successful_explicit_connection():

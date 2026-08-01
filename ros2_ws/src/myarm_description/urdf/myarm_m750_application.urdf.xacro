@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<!--
+  Application-facing wrapper around the immutable canonical PoE URDF.
+
+  The included baseline owns the 6R chain, tool0 and gripper geometry.  This
+  wrapper may append fixed application hardware only.  It must never change
+  arm joint names, origins, axes, limits, base_link or tool0.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="myarm_m750">
+  <xacro:arg name="use_wrist_camera" default="false"/>
+  <xacro:arg name="wrist_camera_mount_xyz" default="0 0 0"/>
+  <xacro:arg name="wrist_camera_mount_rpy" default="0 0 0"/>
+  <xacro:arg name="wrist_camera_xyz" default="0 0 0"/>
+  <xacro:arg name="wrist_camera_rpy" default="0 0 0"/>
+
+  <!-- Plain URDF on purpose: pycore and Pinocchio continue to consume it. -->
+  <xacro:include filename="myarm_m750_poe_v3_2.urdf"/>
+  <xacro:include filename="xacro/sensors/wrist_camera.xacro"/>
+
+  <xacro:if value="$(arg use_wrist_camera)">
+    <xacro:myarm_wrist_camera
+      parent_link="gripper_base_link"
+      mount_xyz="$(arg wrist_camera_mount_xyz)"
+      mount_rpy="$(arg wrist_camera_mount_rpy)"
+      camera_xyz="$(arg wrist_camera_xyz)"
+      camera_rpy="$(arg wrist_camera_rpy)"/>
+  </xacro:if>
+</robot>

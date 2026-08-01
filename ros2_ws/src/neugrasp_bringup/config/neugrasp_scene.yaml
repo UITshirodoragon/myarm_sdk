@@ -1,0 +1,55 @@
+schema_version: 1
+
+# Exactly one owner may publish each child frame. These transforms are
+# application/cell metadata, so they deliberately stay outside robot URDF.
+static_frames:
+  - name: world_to_base
+    enabled: true
+    parent_frame: world
+    child_frame: base_link
+    translation_m: [0.0, 0.0, 0.0]
+    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+  - name: workspace
+    enabled: true
+    parent_frame: base_link
+    child_frame: neugrasp_workspace
+    translation_m: [0.5, 0.0, 0.0]
+    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+  - name: volume
+    enabled: true
+    parent_frame: neugrasp_workspace
+    child_frame: neugrasp_volume
+    translation_m: [-0.15, -0.15, -0.0503]
+    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+  - name: scan_view_00
+    enabled: true
+    parent_frame: neugrasp_workspace
+    child_frame: scan_view_00_optical
+    translation_m: [0.0, 0.0, 0.0]
+    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+  - name: scan_view_01
+    enabled: true
+    parent_frame: neugrasp_workspace
+    child_frame: scan_view_01_optical
+    translation_m: [0.0, 0.0, 0.0]
+    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+  - name: scan_view_02
+    enabled: true
+    parent_frame: neugrasp_workspace
+    child_frame: scan_view_02_optical
+    translation_m: [0.0, 0.0, 0.0]
+    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+  - name: scan_view_03
+    enabled: true
+    parent_frame: neugrasp_workspace
+    child_frame: scan_view_03_optical
+    translation_m: [0.0, 0.0, 0.0]
+    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+  # A shoulder/cell camera is external to the robot and belongs here, never
+  # under robot URDF. Enable only with verified calibration.
+  - name: shoulder_camera
+    enabled: false
+    parent_frame: world
+    child_frame: shoulder_camera_link
+    translation_m: [0.0, 0.0, 0.0]
+    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]

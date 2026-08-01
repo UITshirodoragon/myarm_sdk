@@ -9,6 +9,8 @@ from dataclasses import replace
 from typing import Optional, Sequence, Tuple
 
 from myarm_sdk.core import (
+    GripperCommand,
+    GripperState,
     JointMetadata,
     JointPositions,
     RobotArmCommand,
@@ -44,6 +46,7 @@ class FakeRobotArm:
         joint_metadata: Sequence[JointMetadata] = (),
         start_connected: bool = True,
         start_powered: bool = True,
+        initial_gripper_opening_width_m: float = 0.0,
     ) -> None:
         if initial_joint_positions is not None and not isinstance(
             initial_joint_positions, JointPositions
@@ -53,6 +56,9 @@ class FakeRobotArm:
             raise TypeError("start_connected must be boolean")
         if not isinstance(start_powered, bool):
             raise TypeError("start_powered must be boolean")
+        initial_gripper_opening_width_m = self._validate_gripper_opening(
+            initial_gripper_opening_width_m
+        )
         self._joint_metadata = self._validate_joint_metadata(joint_metadata)
         initial = (
             initial_joint_positions
@@ -68,6 +74,12 @@ class FakeRobotArm:
             is_moving=False,
             measured_joint_positions=initial,
             measured_at_monotonic_s=now_s,
+            gripper_state=GripperState(
+                opening_width_m=initial_gripper_opening_width_m,
+                is_enabled=start_powered,
+                is_moving=False,
+                measured_at_monotonic_s=now_s,
+            ),
         )
         self._lock = threading.RLock()
 
@@ -136,17 +148,30 @@ class FakeRobotArm:
     def stop(self) -> RobotArmState:
         with self._lock:
             self._require_connected()
-            return self._replace_state(is_moving=False)
+            return self._replace_state(
+                is_moving=False,
+                gripper_state=self._replace_gripper_state(is_moving=False),
+            )
 
     def power_on(self) -> RobotArmState:
         with self._lock:
             self._require_connected()
-            return self._replace_state(is_powered=True, is_moving=False)
+            return self._replace_state(
+                is_powered=True,
+                is_moving=False,
+                gripper_state=self._replace_gripper_state(is_enabled=True),
+            )
 
     def power_off(self) -> RobotArmState:
         with self._lock:
             self._require_connected()
-            return self._replace_state(is_powered=False, is_moving=False)
+            return self._replace_state(
+                is_powered=False,
+                is_moving=False,
+                gripper_state=self._replace_gripper_state(
+                    is_enabled=False, is_moving=False
+                ),
+            )
 
     def read_power_state(self) -> RobotArmState:
         with self._lock:
@@ -157,6 +182,52 @@ class FakeRobotArm:
         with self._lock:
             self._require_connected()
             return self._replace_state(is_moving=False)
+
+    def read_gripper_state(self) -> GripperState:
+        with self._lock:
+            self._require_connected()
+            state = self._replace_gripper_state(is_moving=False)
+            self._replace_state(gripper_state=state)
+            return state
+
+    def enable_gripper(self) -> RobotArmState:
+        with self._lock:
+            self._require_ready_for_motion()
+            return self._replace_state(
+                gripper_state=self._replace_gripper_state(is_enabled=True)
+            )
+
+    def write_gripper_opening(
+        self, opening_width_m: float, speed_scale: float = 0.5
+    ) -> GripperCommand:
+        with self._lock:
+            self._require_ready_for_motion()
+            self._validate_speed_scale(speed_scale)
+            opening_width_m = self._validate_gripper_opening(opening_width_m)
+            gripper = self._state.gripper_state
+            if gripper is None or gripper.is_enabled is not True:
+                raise RobotArmLifecycleError("FakeRobotArm gripper is not enabled")
+            now_s = time.monotonic()
+            command = GripperCommand(
+                requested_opening_width_m=opening_width_m,
+                accepted_opening_width_m=opening_width_m,
+                speed_scale=speed_scale,
+                issued_at_monotonic_s=now_s,
+                sequence=gripper.sequence + 1,
+            )
+            return_command_state = GripperState(
+                opening_width_m=opening_width_m,
+                is_enabled=True,
+                is_moving=False,
+                measured_at_monotonic_s=now_s,
+                last_command=command,
+                sequence=command.sequence,
+            )
+            self._replace_state(gripper_state=return_command_state)
+            return command
+
+    def read_gripper_motion_state(self) -> GripperState:
+        return self.read_gripper_state()
 
     # Compatibility wrappers retained while callers move to the stateful API.
     def read_joints(self) -> JointPositions:
@@ -209,6 +280,15 @@ class FakeRobotArm:
         if not math.isfinite(normalized) or not 0.0 < normalized <= 1.0:
             raise ValueError("speed_scale must be finite and in the range (0, 1]")
 
+    @staticmethod
+    def _validate_gripper_opening(opening_width_m: float) -> float:
+        if isinstance(opening_width_m, bool):
+            raise TypeError("opening_width_m must be numeric, not boolean")
+        normalized = float(opening_width_m)
+        if not math.isfinite(normalized) or not 0.0 <= normalized <= 0.08:
+            raise ValueError("opening_width_m must be in [0, 0.08] metres")
+        return normalized
+
     def _require_connected(self) -> None:
         if not self._state.is_connected:
             raise RobotArmLifecycleError("FakeRobotArm is disconnected")
@@ -227,6 +307,23 @@ class FakeRobotArm:
             **changes,
         )
         return self._state
+
+    def _replace_gripper_state(self, **changes) -> GripperState:
+        current = self._state.gripper_state
+        if current is None:
+            current = GripperState()
+        return replace(
+            current,
+            measured_at_monotonic_s=(
+                time.monotonic()
+                if current.opening_width_m is not None
+                else current.measured_at_monotonic_s
+            ),
+            sequence=current.sequence + 1,
+            consecutive_error_count=0,
+            last_error_message=None,
+            **changes,
+        )
 
 
 # The package path already communicates the adapter role.  Keep this alias so

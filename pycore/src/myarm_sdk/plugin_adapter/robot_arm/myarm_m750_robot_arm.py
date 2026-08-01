@@ -10,6 +10,8 @@ from dataclasses import replace
 from typing import Any, Callable, Optional, Sequence, Tuple
 
 from myarm_sdk.core import (
+    GripperCommand,
+    GripperState,
     JointMetadata,
     JointPositions,
     RobotArmCommand,
@@ -68,6 +70,7 @@ class MyArmM750RobotArm:
     DEFAULT_TIMEOUT_S = 0.1
     DEFAULT_SPEED_SCALE = 0.5
     DEFAULT_FRESH_MODE = 1
+    MAX_GRIPPER_OPENING_WIDTH_M = 0.08
     DEFAULT_MODEL_TO_HARDWARE_OFFSETS_RAD = (
         0.0,
         math.radians(10.0),
@@ -87,6 +90,9 @@ class MyArmM750RobotArm:
         model_to_hardware_offsets_rad: Sequence[float] = (
             DEFAULT_MODEL_TO_HARDWARE_OFFSETS_RAD
         ),
+        gripper_enabled: bool = False,
+        gripper_vendor_value_at_closed: int = 0,
+        gripper_vendor_value_at_open: int = 100,
         vendor_factory: Optional[Callable[..., Any]] = None,
     ) -> None:
         if not isinstance(serial_port, str) or not serial_port.strip():
@@ -105,6 +111,8 @@ class MyArmM750RobotArm:
             raise ValueError("timeout_s must be positive")
         if not isinstance(debug, bool):
             raise TypeError("debug must be boolean")
+        if not isinstance(gripper_enabled, bool):
+            raise TypeError("gripper_enabled must be boolean")
         if vendor_factory is not None and not callable(vendor_factory):
             raise TypeError("vendor_factory must be callable or None")
 
@@ -121,10 +129,22 @@ class MyArmM750RobotArm:
         self._timeout_s = timeout
         self._debug = debug
         self._model_to_hardware_offsets_rad = offsets
+        self._gripper_enabled = gripper_enabled
+        self._gripper_vendor_value_at_closed = self._vendor_gripper_value(
+            gripper_vendor_value_at_closed, "gripper_vendor_value_at_closed"
+        )
+        self._gripper_vendor_value_at_open = self._vendor_gripper_value(
+            gripper_vendor_value_at_open, "gripper_vendor_value_at_open"
+        )
+        if self._gripper_vendor_value_at_closed == self._gripper_vendor_value_at_open:
+            raise ValueError("gripper calibration endpoints must differ")
         self._joint_metadata = self._validate_joint_metadata(joint_metadata)
         self._vendor_factory = vendor_factory
         self._vendor: Optional[Any] = None
-        self._state = RobotArmState(source="myarm_m750_robot_arm")
+        self._state = RobotArmState(
+            source="myarm_m750_robot_arm",
+            gripper_state=GripperState(is_enabled=False),
+        )
         self._lock = threading.RLock()
 
     @property
@@ -273,7 +293,10 @@ class MyArmM750RobotArm:
         with self._lock:
             vendor = self._require_vendor()
             self._call_vendor("stop", vendor.stop)
-            return self._replace_state(is_moving=None)
+            return self._replace_state(
+                is_moving=None,
+                gripper_state=self._replace_gripper_state(is_moving=None),
+            )
 
     def power_on(self) -> RobotArmState:
         with self._lock:
@@ -285,7 +308,12 @@ class MyArmM750RobotArm:
         with self._lock:
             vendor = self._require_vendor()
             self._call_vendor("power_off", vendor.power_off)
-            return self._read_power_state_locked(expected_powered=False)
+            state = self._read_power_state_locked(expected_powered=False)
+            return self._replace_state(
+                gripper_state=self._replace_gripper_state(
+                    is_enabled=False, is_moving=False
+                )
+            )
 
     def read_power_state(self) -> RobotArmState:
         with self._lock:
@@ -296,6 +324,81 @@ class MyArmM750RobotArm:
             vendor = self._require_vendor()
             is_moving = self._read_vendor_boolean("is_moving", vendor.is_moving)
             return self._replace_state(is_moving=is_moving)
+
+    def read_gripper_state(self) -> GripperState:
+        """Read physical gripper raw feedback and map it to total opening metres."""
+        with self._lock:
+            self._require_gripper_configured()
+            vendor = self._require_vendor()
+            raw_value = self._read_vendor_gripper_value(
+                self._call_vendor("get_gripper_value", vendor.get_gripper_value)
+            )
+            state = self._replace_gripper_state(
+                opening_width_m=self._opening_from_vendor_value(raw_value),
+                raw_vendor_value=raw_value,
+                measured_at_monotonic_s=time.monotonic(),
+            )
+            self._replace_state(gripper_state=state)
+            return state
+
+    def enable_gripper(self) -> RobotArmState:
+        """Enable gripper actuation without issuing an opening command."""
+        with self._lock:
+            self._require_gripper_configured()
+            vendor = self._require_vendor()
+            self._require_powered_for_motion()
+            self._call_vendor("set_gripper_enabled", vendor.set_gripper_enabled)
+            return self._replace_state(
+                gripper_state=self._replace_gripper_state(is_enabled=True)
+            )
+
+    def write_gripper_opening(
+        self, opening_width_m: float, speed_scale: float = DEFAULT_SPEED_SCALE
+    ) -> GripperCommand:
+        """Command total distance between fingertips; feedback remains separate."""
+        with self._lock:
+            self._require_gripper_configured()
+            vendor = self._require_vendor()
+            self._require_powered_for_motion()
+            gripper = self._state.gripper_state
+            if gripper is None or gripper.is_enabled is not True:
+                raise RobotArmLifecycleError(
+                    "MyArm M750 gripper is not enabled; call enable_gripper() first"
+                )
+            opening_width_m = self._opening_width(opening_width_m)
+            vendor_speed = self._vendor_speed_from_scale(speed_scale)
+            requested_vendor_value = self._vendor_value_from_opening(opening_width_m)
+            self._call_vendor(
+                "set_gripper_value",
+                lambda: vendor.set_gripper_value(requested_vendor_value, vendor_speed),
+            )
+            accepted_opening_width_m = self._opening_from_vendor_value(
+                requested_vendor_value
+            )
+            command = GripperCommand(
+                requested_opening_width_m=opening_width_m,
+                accepted_opening_width_m=accepted_opening_width_m,
+                speed_scale=speed_scale,
+                sequence=gripper.sequence + 1,
+            )
+            self._replace_state(
+                gripper_state=self._replace_gripper_state(
+                    last_command=command,
+                    is_moving=None,
+                )
+            )
+            return command
+
+    def read_gripper_motion_state(self) -> GripperState:
+        with self._lock:
+            self._require_gripper_configured()
+            vendor = self._require_vendor()
+            is_moving = self._read_vendor_boolean(
+                "is_gripper_moving", vendor.is_gripper_moving
+            )
+            state = self._replace_gripper_state(is_moving=is_moving)
+            self._replace_state(gripper_state=state)
+            return state
 
     # Compatibility wrappers retained while callers move to the stateful API.
     def read_joints(self) -> JointPositions:
@@ -472,6 +575,60 @@ class MyArmM750RobotArm:
             raise ValueError("speed_scale must be finite and in the range (0, 1]")
         return max(1, min(100, round(normalized * 100.0)))
 
+    @classmethod
+    def _opening_width(cls, opening_width_m: float) -> float:
+        if isinstance(opening_width_m, bool):
+            raise TypeError("opening_width_m must be numeric, not boolean")
+        normalized = float(opening_width_m)
+        if (
+            not math.isfinite(normalized)
+            or not 0.0 <= normalized <= cls.MAX_GRIPPER_OPENING_WIDTH_M
+        ):
+            raise ValueError("opening_width_m must be in [0, 0.08] metres")
+        return normalized
+
+    @staticmethod
+    def _vendor_gripper_value(value: Any, name: str) -> int:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise TypeError(f"{name} must be an integer")
+        if not 0 <= value <= 100:
+            raise ValueError(f"{name} must be in the range 0..100")
+        return value
+
+    def _vendor_value_from_opening(self, opening_width_m: float) -> int:
+        fraction = opening_width_m / self.MAX_GRIPPER_OPENING_WIDTH_M
+        value = self._gripper_vendor_value_at_closed + fraction * (
+            self._gripper_vendor_value_at_open
+            - self._gripper_vendor_value_at_closed
+        )
+        return max(0, min(100, int(round(value))))
+
+    def _opening_from_vendor_value(self, value: int) -> float:
+        raw_value = self._vendor_gripper_value(value, "gripper vendor value")
+        fraction = (
+            raw_value - self._gripper_vendor_value_at_closed
+        ) / (
+            self._gripper_vendor_value_at_open
+            - self._gripper_vendor_value_at_closed
+        )
+        return max(0.0, min(self.MAX_GRIPPER_OPENING_WIDTH_M, fraction * self.MAX_GRIPPER_OPENING_WIDTH_M))
+
+    @staticmethod
+    def _read_vendor_gripper_value(response: Any) -> int:
+        if isinstance(response, bool) or not isinstance(response, int):
+            raise RobotArmProtocolError(
+                "MyArmMControl get_gripper_value must return an integer"
+            )
+        if not 0 <= response <= 100:
+            raise RobotArmProtocolError(
+                "MyArmMControl get_gripper_value must return a value in 0..100"
+            )
+        return response
+
+    def _require_gripper_configured(self) -> None:
+        if not self._gripper_enabled:
+            raise RobotArmLifecycleError("MyArm M750 gripper is disabled by configuration")
+
     @staticmethod
     def _quantize_hardware_angle_deg(angle_deg: float) -> float:
         """Mirror pymycobot's ``int(angle * 100)`` command resolution."""
@@ -486,6 +643,16 @@ class MyArmM750RobotArm:
             **changes,
         )
         return self._state
+
+    def _replace_gripper_state(self, **changes) -> GripperState:
+        current = self._state.gripper_state or GripperState()
+        return replace(
+            current,
+            sequence=current.sequence + 1,
+            consecutive_error_count=0,
+            last_error_message=None,
+            **changes,
+        )
 
     def _record_error(self, message: str) -> None:
         self._state = replace(

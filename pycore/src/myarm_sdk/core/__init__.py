@@ -27,6 +27,8 @@ from .motion_execution import (
 )
 from .pose import Pose
 from .robot_arm import (
+    GripperCommand,
+    GripperState,
     RobotArmCommand,
     RobotArmConnectionError,
     RobotArmError,
@@ -48,6 +50,8 @@ from .urdf import load_urdf_joint_metadata
 
 __all__ = [
     "CameraFrame",
+    "GripperCommand",
+    "GripperState",
     "IKFailureReason",
     "IKNearSingularityPolicy",
     "IKPolicy",

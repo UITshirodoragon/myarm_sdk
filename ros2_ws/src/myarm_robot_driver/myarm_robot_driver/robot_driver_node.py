@@ -16,10 +16,13 @@ from typing import Any, Mapping, Optional
 import rclpy
 from ament_index_python.packages import get_package_share_directory
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
+from myarm_interfaces.msg import DriverJointSetpoint
 from myarm_sdk.core import JointPositions, RobotArmCommand, RobotArmState, load_sdk_yaml
 from myarm_sdk.service import RobotArmService
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64, String
 from std_srvs.srv import Trigger
 
 from .joint_state_mapping import canonical_joint_positions_from_names
@@ -48,8 +51,21 @@ class MyArmRobotDriverNode(Node):
             self._service.accepts_execution_setpoints,
             "RobotArmService.accepts_execution_setpoints",
         )
+        self._accepts_gripper_commands = self._required_bool(
+            self._service.accepts_gripper_commands,
+            "RobotArmService.accepts_gripper_commands",
+        )
         self._pending_setpoint: Optional[JointPositions] = None
         self._pending_setpoint_lock = threading.RLock()
+        self._safety_lock = threading.RLock()
+        self._safety_epoch = 0
+        # A physical transport is never armed merely because bringup started.
+        self._safety_state = (
+            "disarmed"
+            if self._service_config.get("plugin_adapter") == "myarm_m750_robot_arm"
+            else "armed"
+        )
+        self._safety_reason = "startup"
 
         measured_topic = self._required_topic("measured_joint_state")
         self._measured_joint_state_publisher = self.create_publisher(
@@ -64,11 +80,19 @@ class MyArmRobotDriverNode(Node):
         self._diagnostics_publisher = self.create_publisher(
             DiagnosticArray, self._required_topic("diagnostics"), 10
         )
+        self._safety_state_publisher = self.create_publisher(
+            String,
+            self._required_topic("safety_state"),
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL),
+        )
+        self._gripper_state_publisher = self.create_publisher(
+            JointState, self._required_topic("gripper_state"), 10
+        )
 
         self._setpoint_subscription = None
         if self._accepts_execution_setpoints:
             self._setpoint_subscription = self.create_subscription(
-                JointState,
+                DriverJointSetpoint,
                 self._required_topic("internal_setpoint"),
                 self._internal_setpoint_callback,
                 10,
@@ -77,6 +101,12 @@ class MyArmRobotDriverNode(Node):
             self.get_logger().info(
                 "Internal execution setpoints are disabled by robot transport policy."
             )
+        self._gripper_command_subscription = self.create_subscription(
+            Float64,
+            self._required_topic("gripper_command"),
+            self._gripper_command_callback,
+            10,
+        )
 
         self._stop_service = self.create_service(
             Trigger, self._required_topic("stop_service"), self._stop_callback
@@ -87,12 +117,16 @@ class MyArmRobotDriverNode(Node):
         self._power_off_service = self.create_service(
             Trigger, self._required_topic("power_off_service"), self._power_off_callback
         )
+        self._rearm_service = self.create_service(
+            Trigger, self._required_topic("rearm_service"), self._rearm_callback
+        )
 
         update_rate_hz = self._positive_float(
             self._service.update_rate_hz, "robot_arm update_rate_hz"
         )
         self.create_timer(1.0 / update_rate_hz, self._poll_and_publish)
         self._connect_at_startup()
+        self._publish_safety_state()
         self.get_logger().info(
             f"myarm_robot_driver is running at {self._format_number(update_rate_hz)} Hz; actual state is published on {measured_topic}."
         )
@@ -172,12 +206,12 @@ class MyArmRobotDriverNode(Node):
             return
         self._publish_state(state)
 
-    def _internal_setpoint_callback(self, message: JointState) -> None:
+    def _internal_setpoint_callback(self, message: DriverJointSetpoint) -> None:
         """Store only the newest transport setpoint; no serial I/O in callback."""
         try:
             target = canonical_joint_positions_from_names(
-                names=message.name,
-                positions=message.position,
+                names=message.joint_names,
+                positions=message.positions,
                 canonical_joint_names=self._joint_names,
             )
         except Exception as error:  # noqa: BLE001 - publish clear boundary diagnostics.
@@ -185,8 +219,40 @@ class MyArmRobotDriverNode(Node):
             self.get_logger().warning(detail)
             self._publish_boundary_error("invalid_internal_setpoint", detail)
             return
-        with self._pending_setpoint_lock:
-            self._pending_setpoint = target
+        with self._safety_lock:
+            if self._safety_state != "armed" or message.safety_epoch != self._safety_epoch:
+                self._publish_boundary_error(
+                    "rejected_internal_setpoint",
+                    "driver is {} at epoch {}; message epoch was {}".format(
+                        self._safety_state, self._safety_epoch, message.safety_epoch
+                    ),
+                )
+                return
+            with self._pending_setpoint_lock:
+                self._pending_setpoint = target
+
+    def _gripper_command_callback(self, message: Float64) -> None:
+        """Accept total fingertip opening; gripper remains part of RobotArm."""
+        if not self._accepts_gripper_commands:
+            self._publish_boundary_error(
+                "gripper_command_rejected",
+                "gripper commands are disabled by robot_arm transport policy",
+            )
+            return
+        try:
+            with self._safety_lock:
+                if self._safety_state != "armed":
+                    self._publish_boundary_error(
+                        "gripper_command_rejected", "driver safety gate is not armed"
+                    )
+                    return
+                self._service.enable_gripper()
+                self._service.send_gripper_opening(float(message.data))
+            self._publish_state(self._service.state)
+        except Exception as error:  # noqa: BLE001 - ROS boundary must retain error.
+            detail = f"gripper command rejected: {error}"
+            self.get_logger().error(detail)
+            self._publish_boundary_error("gripper_command_error", detail)
 
     def _take_pending_setpoint(self) -> Optional[JointPositions]:
         with self._pending_setpoint_lock:
@@ -200,19 +266,33 @@ class MyArmRobotDriverNode(Node):
 
     def _poll_and_publish(self) -> None:
         feedback = self._service.read_feedback(now_monotonic_s=time.monotonic())
-        self._publish_state(feedback.state)
+        state_to_publish = feedback.state
+        if self._accepts_gripper_commands:
+            self._service.read_gripper_feedback()
+            state_to_publish = self._service.state
+        self._publish_state(state_to_publish)
 
         command = None
         command_submitted = False
         command_error = None
-        if feedback.feedback_error is None and feedback.measured_state_fresh:
-            target = self._take_pending_setpoint()
-            if target is not None:
-                command_submitted = True
-                try:
-                    command = self._service.send_joint_setpoint(target)
-                except Exception as error:  # noqa: BLE001 - transport fault is diagnostic.
-                    command_error = str(error)
+        if feedback.feedback_error is not None or not feedback.measured_state_fresh:
+            if self._accepts_execution_setpoints and self._is_armed():
+                self._trip_safety("feedback_stale_or_error")
+        elif self._is_armed():
+            # Hold the same gate used by stop/fault across mailbox take and
+            # serial write.  A setpoint can therefore happen before a stop or
+            # be discarded after it, but never be written after the gate has
+            # closed and the stop transaction has started.
+            with self._safety_lock:
+                if self._safety_state == "armed":
+                    target = self._take_pending_setpoint()
+                    if target is not None:
+                        command_submitted = True
+                        try:
+                            command = self._service.send_joint_setpoint(target)
+                        except Exception as error:  # noqa: BLE001 - transport fault is diagnostic.
+                            command_error = str(error)
+                            self._trip_safety("setpoint_error")
         self._publish_diagnostics(
             state=feedback.state,
             feedback_age_s=feedback.measurement_age_s,
@@ -237,13 +317,20 @@ class MyArmRobotDriverNode(Node):
         if self._visualization_joint_state_publisher is not None:
             visualization_message = JointState()
             visualization_message.header.stamp = stamp
-            visualization_message.name = list(self._joint_names) + [
-                "left_gripper_joint"
-            ]
-            visualization_message.position = list(
-                state.measured_joint_positions.values
-            ) + [0.0]
+            visualization_message.name = list(self._joint_names)
+            visualization_message.position = list(state.measured_joint_positions.values)
+            gripper = state.gripper_state
+            if gripper is not None and gripper.opening_width_m is not None:
+                visualization_message.name.append("left_gripper_joint")
+                visualization_message.position.append(gripper.opening_width_m / 2.0)
             self._visualization_joint_state_publisher.publish(visualization_message)
+        gripper = state.gripper_state
+        if gripper is not None and gripper.opening_width_m is not None:
+            gripper_message = JointState()
+            gripper_message.header.stamp = stamp
+            gripper_message.name = ["left_gripper_joint"]
+            gripper_message.position = [gripper.opening_width_m / 2.0]
+            self._gripper_state_publisher.publish(gripper_message)
 
     def _publish_diagnostics(
         self,
@@ -277,6 +364,12 @@ class MyArmRobotDriverNode(Node):
             KeyValue(key="feedback_error", value=feedback_error or ""),
             KeyValue(key="setpoint_error", value=command_error or ""),
         ]
+        with self._safety_lock:
+            values.extend([
+                KeyValue(key="safety_state", value=self._safety_state),
+                KeyValue(key="safety_epoch", value=str(self._safety_epoch)),
+                KeyValue(key="safety_reason", value=self._safety_reason),
+            ])
         if state is not None:
             values.extend([
                 KeyValue(key="source", value=state.source),
@@ -344,8 +437,10 @@ class MyArmRobotDriverNode(Node):
 
     def _stop_callback(self, request, response):
         del request
-        self._clear_pending_setpoint()
-        return self._run_lifecycle_callback("stop", self._service.stop, response)
+        success, detail = self._trip_safety("operator_stop")
+        response.success = success
+        response.message = detail
+        return response
 
     def _power_on_callback(self, request, response):
         del request
@@ -353,8 +448,65 @@ class MyArmRobotDriverNode(Node):
 
     def _power_off_callback(self, request, response):
         del request
-        self._clear_pending_setpoint()
+        self._trip_safety("power_off")
         return self._run_lifecycle_callback("power_off", self._service.power_off, response)
+
+    def _rearm_callback(self, request, response):
+        del request
+        feedback = self._service.read_feedback(now_monotonic_s=time.monotonic())
+        if (
+            feedback.feedback_error is not None
+            or not feedback.measured_state_fresh
+            or feedback.state.is_connected is not True
+            or feedback.state.is_powered is False
+        ):
+            response.success = False
+            response.message = "re-arm rejected: fresh connected powered feedback is required"
+            return response
+        with self._safety_lock:
+            self._clear_pending_setpoint()
+            self._safety_epoch += 1
+            self._safety_state = "armed"
+            self._safety_reason = "operator_rearm"
+        self._publish_safety_state()
+        response.success = True
+        response.message = f"driver armed at safety epoch {self._safety_epoch}"
+        return response
+
+    def _is_armed(self) -> bool:
+        with self._safety_lock:
+            return self._safety_state == "armed"
+
+    def _trip_safety(self, reason: str):
+        """Fail closed: gate → invalidate epoch → clear mailbox → stop → latch."""
+        with self._safety_lock:
+            if self._safety_state == "fault_latched":
+                return True, f"driver already fault-latched ({self._safety_reason})"
+            self._safety_state = "stopping"
+            self._safety_reason = reason
+            self._safety_epoch += 1
+            self._clear_pending_setpoint()
+        try:
+            self._service.stop()
+        except Exception as error:  # noqa: BLE001 - retain a latched safety fault.
+            detail = f"safe stop failed: {error}"
+            success = False
+        else:
+            detail = f"safe stop complete; fault latched ({reason})"
+            success = True
+        with self._safety_lock:
+            self._safety_state = "fault_latched"
+            self._safety_reason = reason if success else f"{reason}: {detail}"
+        self._publish_safety_state()
+        return success, detail
+
+    def _publish_safety_state(self) -> None:
+        with self._safety_lock:
+            message = String()
+            message.data = "state={};epoch={};reason={}".format(
+                self._safety_state, self._safety_epoch, self._safety_reason
+            )
+        self._safety_state_publisher.publish(message)
 
     def _run_lifecycle_callback(self, operation: str, action, response):
         try:
@@ -379,7 +531,7 @@ class MyArmRobotDriverNode(Node):
 
     def destroy_node(self):
         """Release the backend transport without changing robot power state."""
-        self._clear_pending_setpoint()
+        self._trip_safety("driver_shutdown")
         try:
             self._service.disconnect()
         except Exception as error:  # noqa: BLE001 - shutdown remains best effort.

@@ -7,7 +7,12 @@ from .motion_execution import (
     MotionExecutionServiceError,
     MotionExecutionServiceSettings,
 )
-from .robot_arm import RobotArmFeedback, RobotArmService, RobotArmServiceError
+from .robot_arm import (
+    RobotArmFeedback,
+    RobotArmGripperFeedback,
+    RobotArmService,
+    RobotArmServiceError,
+)
 from .trajectory import TrajectoryPlannerService
 
 __all__ = [
@@ -19,6 +24,7 @@ __all__ = [
     "MotionExecutionServiceError",
     "MotionExecutionServiceSettings",
     "RobotArmFeedback",
+    "RobotArmGripperFeedback",
     "RobotArmService",
     "RobotArmServiceError",
     "TrajectoryPlannerService",
