@@ -1,14 +1,13 @@
-"""Joint trajectory planning contract."""
+"""Joint trajectory-planning contract."""
 
-from typing import Protocol, Sequence
+from typing import Protocol
 
-from myarm_sdk.core import JointPositions, TrajectoryPoint
+from myarm_sdk.core import TrajectoryPlanningRequest, TrajectoryPlanningResult
 
 
-class TrajectoryInterface(Protocol):
-    """Plan timed joint-space waypoints."""
+class TrajectoryPlannerInterface(Protocol):
+    """Plan one validated joint-space trajectory without robot I/O."""
 
-    def plan(
-        self, start: JointPositions, target: JointPositions, duration_s: float
-    ) -> Sequence[TrajectoryPoint]:
+    def plan(self, request: TrajectoryPlanningRequest) -> TrajectoryPlanningResult:
+        """Return a safe result instead of an invalid command trajectory."""
         ...

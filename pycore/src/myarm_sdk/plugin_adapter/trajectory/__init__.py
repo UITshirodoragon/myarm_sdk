@@ -1,5 +1,5 @@
-"""Trajectory plugin adapters."""
+"""Joint trajectory-planning plugin adapters."""
 
-from .linear_trajectory import LinearTrajectoryAdapter
+from .minimum_jerk_joint_trajectory import MinimumJerkJointTrajectoryAdapter
 
-__all__ = ["LinearTrajectoryAdapter"]
+__all__ = ["MinimumJerkJointTrajectoryAdapter"]

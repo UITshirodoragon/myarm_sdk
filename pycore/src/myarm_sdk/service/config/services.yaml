@@ -1,6 +1,54 @@
 schema_version: 1
 
+robot:
+  # One source of truth for the URDF metadata and named poses shared by
+  # kinematics and the robot driver.
+  robot_description:
+    package: myarm_description
+    relative_path: urdf/myarm_m750_poe_v3_2.urdf
+  joint_order:
+    source: urdf
+    names:
+      - shoulder_pan_joint
+      - shoulder_lift_joint
+      - elbow_flex_joint
+      - forearm_roll_joint
+      - wrist_flex_joint
+      - wrist_roll_joint
+  named_poses:
+    zero:
+      positions_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    home:
+      positions_rad: [0.0, -0.35, 0.70, 0.0, -0.35, 0.0]
+
 services:
+  robot_arm:
+    # The checked-in default is safe for development: no serial hardware is
+    # opened. Select myarm_m750_robot_arm only in a deliberate hardware profile.
+    enabled: true
+    plugin_adapter: fake_robot_arm
+    plugin_config: plugin_adapter/robot_arm/config/fake_robot_arm.yaml
+    update_rate_hz: 5.0
+    initial_named_pose: home
+    feedback:
+      stale_after_s: 0.5
+    transport:
+      default_speed_scale: 0.5
+      # This is a private transport stream from MotionExecutionService, not a
+      # public direct-joint command interface.
+      accept_internal_setpoints: true
+      # Physical motion remains an explicit opt-in. The fake backend accepts
+      # execution setpoints with this value false.
+      allow_physical_motion: false
+    topics:
+      internal_setpoint: /myarm/internal/driver_joint_setpoint
+      measured_joint_state: /myarm/state/joint_state
+      visualization_joint_state: /joint_states
+      diagnostics: /myarm/robot/diagnostics
+      stop_service: /myarm/robot/stop
+      power_on_service: /myarm/robot/power_on
+      power_off_service: /myarm/robot/power_off
+
   camera:
     enabled: false
     instances:
@@ -33,31 +81,41 @@ services:
     plugin_config: plugin_adapter/kinematics/config/pinocchio_m750_poe.yaml
     update_rate_hz: 5.0
     initial_named_pose: home
-    named_poses:
-      zero:
-        positions_rad: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-      home:
-        positions_rad: [0.0, -0.35, 0.70, 0.0, -0.35, 0.0]
     seed:
-      source: last_commanded #measured_joint_state
+      source: measured_joint_state
       measured_state_max_age_s: 0.5
       allow_last_commanded_fallback: false
     topics:
       target_pose: /myarm/command/tcp_pose
       measured_joint_state: /myarm/state/joint_state
-      joint_target: /myarm/command/joint_target
+      joint_goal: /myarm/command/joint_goal
       current_tcp_pose: /myarm/state/tcp_pose
       commanded_tcp_pose: /myarm/kinematics/commanded_tcp_pose
       ik_status: /myarm/kinematics/ik_status
 
-  trajectory:
-    enabled: false
-    plugin_adapter: linear
-    plugin_config: plugin_adapter/trajectory/config/default.yaml
+  trajectory_planner:
+    enabled: true
+    plugin_adapter: minimum_jerk_joint
+    plugin_config: plugin_adapter/trajectory/config/minimum_jerk_joint_trajectory.yaml
     update_rate_hz: 5.0
 
-  controller:
-    enabled: false
-    plugin_adapter: memory
-    plugin_config: plugin_adapter/controller/config/default.yaml
+  motion_execution:
+    enabled: true
+    plugin_adapter: monotonic_time_motion_execution
+    plugin_config: plugin_adapter/motion_execution/config/monotonic_time_motion_execution.yaml
     update_rate_hz: 5.0
+    feedback:
+      measured_state_max_age_s: 0.5
+      start_tolerance_rad: 0.05
+    execution:
+      completion_timeout_margin_s: 0.5
+      late_tick_tolerance_s: 0.25
+    topics:
+      joint_goal: /myarm/command/joint_goal
+      measured_joint_state: /myarm/state/joint_state
+      internal_setpoint: /myarm/internal/driver_joint_setpoint
+      preview: /myarm/trajectory/preview
+      diagnostics: /myarm/motion_execution/diagnostics
+      follow_joint_trajectory: /myarm/follow_joint_trajectory
+      cancel_service: /myarm/motion_execution/cancel
+      reset_service: /myarm/motion_execution/reset

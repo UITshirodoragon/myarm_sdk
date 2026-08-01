@@ -24,14 +24,16 @@ class MyArmKinematicsNode(Node):
         super().__init__("myarm_kinematics")
         services_config = load_sdk_yaml(self._SERVICES_CONFIG)
         self._service_config = self._kinematics_config(services_config)
+        self._robot_config = self._mapping(services_config.get("robot"), "robot")
         self._topics = self._mapping(self._service_config["topics"], "kinematics topics")
         self._service = KinematicsService.from_config(
             service_config=self._service_config,
             package_share_directory=get_package_share_directory,
+            robot_config=self._robot_config,
         )
 
-        self._joint_target_publisher = self.create_publisher(
-            JointState, str(self._topics["joint_target"]), 10
+        self._joint_goal_publisher = self.create_publisher(
+            JointState, str(self._topics["joint_goal"]), 10
         )
         self._current_tcp_pose_publisher = self.create_publisher(
             PoseStamped, str(self._topics["current_tcp_pose"]), 10
@@ -107,7 +109,7 @@ class MyArmKinematicsNode(Node):
             return
 
         if step.command_updated:
-            self._publish_joint_target(step.commanded_joint_positions)
+            self._publish_joint_goal(step.commanded_joint_positions)
             self._publish_pose(
                 self._commanded_tcp_pose_publisher, step.commanded_tcp_pose
             )
@@ -172,12 +174,12 @@ class MyArmKinematicsNode(Node):
             orientation=(orientation.x, orientation.y, orientation.z, orientation.w),
         )
 
-    def _publish_joint_target(self, joints: JointPositions) -> None:
+    def _publish_joint_goal(self, joints: JointPositions) -> None:
         message = JointState()
         message.header.stamp = self.get_clock().now().to_msg()
         message.name = list(self._service.joint_names)
         message.position = list(joints.values)
-        self._joint_target_publisher.publish(message)
+        self._joint_goal_publisher.publish(message)
 
     def _publish_pose(self, publisher, pose: Pose) -> None:
         message = PoseStamped()

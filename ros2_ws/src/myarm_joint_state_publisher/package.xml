@@ -2,9 +2,9 @@
 <package format="3">
   <name>myarm_joint_state_publisher</name>
   <version>0.0.1</version>
-  <description>Demo bridge from MyArm joint targets to joint states for RViz.</description>
+  <description>Legacy demo bridge from MyArm joint targets to joint states for RViz.</description>
   <maintainer email="maintainer@example.com">myarm_sdk maintainers</maintainer>
-  <license>MIT</license>
+  <license>All rights reserved</license>
   <buildtool_depend>ament_python</buildtool_depend>
   <exec_depend>ament_index_python</exec_depend>
   <exec_depend>launch</exec_depend>

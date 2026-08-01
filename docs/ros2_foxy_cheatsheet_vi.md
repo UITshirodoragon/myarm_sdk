@@ -764,9 +764,10 @@ ros2 bag play my_test_bag
 ros2 bag record \
   -o myarm_t1_joint_waypoint \
   /joint_states \
-  /myarm/command/joint_target \
-  /myarm/status \
-  /diagnostics \
+  /myarm/command/joint_goal \
+  /myarm/state/joint_state \
+  /myarm/trajectory/preview \
+  /myarm/motion_execution/diagnostics \
   /tf \
   /tf_static
 ```

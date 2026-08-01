@@ -1,0 +1,17 @@
+# Conservative provisional profile; validate and tune on the physical M750.
+plugin_adapter: minimum_jerk_joint
+sample_period_s: 0.2
+acceleration_limits_rad_s2:
+  shoulder_pan_joint: 0.5
+  shoulder_lift_joint: 0.5
+  elbow_flex_joint: 0.5
+  forearm_roll_joint: 0.5
+  wrist_flex_joint: 0.5
+  wrist_roll_joint: 0.5
+default_time_scaling:
+  # auto_limited | requested_duration_stretch | requested_duration_strict |
+  # speed_scale.  For speed_scale set speed_scale in (0, 1]; the resolved
+  # duration is T_base / speed_scale, so qdot scales by r and qddot by r^2.
+  mode: requested_duration_stretch
+  # requested_duration_s: 3.0
+  # speed_scale: 0.5

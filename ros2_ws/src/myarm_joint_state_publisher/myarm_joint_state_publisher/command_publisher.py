@@ -4,7 +4,11 @@ from sensor_msgs.msg import JointState
 
 
 class CommandJointStatePublisher(Node):
-    """Bridge a commanded six-axis target to the joint state used by RViz."""
+    """Legacy demo bridge from a commanded target to the RViz joint state.
+
+    Do not run this node together with ``myarm_robot_driver``: the production
+    driver is the sole publisher of actual-feedback ``/joint_states``.
+    """
 
     def __init__(self):
         super().__init__("myarm_command_joint_state_publisher")
@@ -15,7 +19,7 @@ class CommandJointStatePublisher(Node):
         )
         self._subscriber = self.create_subscription(
             msg_type=JointState,
-            topic="/myarm/command/joint_target",
+            topic="/myarm/command/joint_goal",
             callback=self._command_callback,
             qos_profile=10,
         )
@@ -33,7 +37,7 @@ class CommandJointStatePublisher(Node):
         self._joint_state_position = [0.0] * 6
         self.create_timer(0.2, self._publish)
         self.get_logger().info(
-            "Bridging /myarm/command/joint_target to /joint_states at 5 Hz for RViz."
+            "Legacy bridge active at 5 Hz. Do not run with myarm_robot_driver."
         )
 
     def _command_callback(self, command: JointState):

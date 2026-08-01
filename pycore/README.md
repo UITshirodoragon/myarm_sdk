@@ -9,8 +9,8 @@ ROS node → service → port_interface → plugin_adapter
 ```
 
 `service/config/services.yaml` là service manifest duy nhất: nó bật/tắt
-camera, kinematics, trajectory và controller. Cấu hình chi tiết của hardware
-instance hoặc backend nằm cạnh từng plugin adapter.
+camera, robot arm, kinematics, trajectory planner và motion execution. Cấu
+hình chi tiết của hardware instance hoặc backend nằm cạnh từng plugin adapter.
 
 Package có thể được cài trực tiếp từ thư mục `pycore`:
 
@@ -53,16 +53,56 @@ khi trả `JointPositions` cho Pinocchio.
 
 ## Interfaces, adapters và services
 
-Các contract là `CameraInterface`, `ControllerInterface`,
-`KinematicsInterface`, `RobotArmInterface` và `TrajectoryInterface` trong
-`myarm_sdk.port_interface`. Pinocchio, OpenCV và pymycobot nằm trong
-`myarm_sdk.plugin_adapter`. Node chỉ dùng service phù hợp, ví dụ
-`KinematicsService`.
+Các contract là `CameraInterface`, `KinematicsInterface`, `RobotArmInterface`,
+`TrajectoryPlannerInterface` và `MotionExecutionInterface` trong
+`myarm_sdk.port_interface`. Pinocchio, OpenCV, pymycobot, minimum-jerk planner
+và monotonic-time executor nằm trong `myarm_sdk.plugin_adapter`. Node chỉ dùng
+service phù hợp, ví dụ `KinematicsService`, `TrajectoryPlannerService` hoặc
+`MotionExecutionService`.
 
 ```python
 from myarm_sdk.core import JointPositions
-from myarm_sdk.plugin_adapter.robot_arm import FakeRobotArmAdapter
+from myarm_sdk.plugin_adapter.robot_arm import FakeRobotArm
 
-arm = FakeRobotArmAdapter()
-arm.move_joints(JointPositions((0, 0, 0, 0, 0, 0)))
+arm = FakeRobotArm()
+arm.write_joint_positions(JointPositions((0, 0, 0, 0, 0, 0)))
 ```
+
+Robot-arm implementations are stateful. ``arm.state`` is an immutable cached
+snapshot with measured state and last accepted command; ``read_state()`` is the
+explicit feedback transaction. ``FakeRobotArm`` applies each accepted target
+immediately to measured state, while ``MyArmM750RobotArm`` only changes its
+measured state after `MyArmMControl.get_angles()` returns feedback.
+
+`FakeRobotArm` starts at the configured safe `home` pose unless an explicit
+initial pose is supplied. `MyArmM750RobotArm` requires the six
+`JointMetadata` entries loaded from the canonical URDF, reads feedback during
+`connect()`, and refuses physical commands until that measurement is valid.
+
+`RobotArmService` is the only service that owns a `RobotArmInterface`. It
+loads the same shared `robot` config as kinematics and exposes only lifecycle,
+`read_feedback()` and `send_joint_setpoint()`. Nó không xếp hàng target, không
+nội suy trajectory và không arbitrate goal; các trách nhiệm đó thuộc
+`MotionExecutionService`. The checked-in configuration selects `FakeRobotArm`.
+With a physical profile, feedback/RViz still work by default; actual motion
+requires the explicit `transport.allow_physical_motion: true` opt-in, and the
+driver accepts only the executor's internal setpoint stream.
+
+## Joint trajectory và motion execution
+
+`MinimumJerkJointTrajectoryAdapter` implements a synchronized quintic
+minimum-jerk point-to-point profile. Its output is a validated
+`JointTrajectory` with `q`, `qdot`, `qddot` and strictly increasing timestamps.
+Position/velocity limits come from URDF; per-joint acceleration limits belong
+to `plugin_adapter/trajectory/config/minimum_jerk_joint_trajectory.yaml`.
+
+`TimeScalingPolicy` supports `auto_limited`, `requested_duration_stretch`,
+`requested_duration_strict` and `speed_scale`. A profile that cannot satisfy
+the configured limits never returns a command trajectory. For speed scale
+`r`, duration becomes `T/r`, velocity scales by `r` and acceleration by `r²`.
+
+`MotionExecutionService` is transport-free. It samples an already validated
+trajectory using a monotonic clock, returns desired setpoints and reports
+execution state, timing lag, tracking error and terminal timeout. The ROS node
+publishes those setpoints to the robot driver; it does not create a second
+robot adapter or serial connection.

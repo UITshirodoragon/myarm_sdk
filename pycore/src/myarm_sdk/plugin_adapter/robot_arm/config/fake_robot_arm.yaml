@@ -1,0 +1,5 @@
+plugin_adapter: fake_robot_arm
+start_connected: true
+start_powered: true
+joint_convention:
+  source: myarm_m750_poe_v3_2_urdf

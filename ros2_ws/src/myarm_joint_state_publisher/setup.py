@@ -17,8 +17,8 @@ setup(
     zip_safe=True,
     maintainer="myarm_sdk maintainers",
     maintainer_email="maintainer@example.com",
-    description="Demo bridge from MyArm joint targets to joint states for RViz.",
-    license="MIT",
+    description="Legacy demo bridge from MyArm joint targets to joint states for RViz.",
+    license="All rights reserved",
     entry_points={
         "console_scripts": [
             "dummy_joint_state_publisher = myarm_joint_state_publisher.dummy_publisher:main",

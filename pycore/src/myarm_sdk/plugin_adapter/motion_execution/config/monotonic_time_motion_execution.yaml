@@ -1,0 +1,18 @@
+plugin_adapter: monotonic_time_motion_execution
+
+# This profile changes pure execution-state behavior only. It never opens a
+# robot connection, streams a setpoint, or performs a ROS action callback.
+policy:
+  # A terminal measured state inside this error is considered complete.
+  completion_tolerance_rad: 0.05
+  # The production execution node only succeeds after fresh feedback reaches
+  # the terminal tolerance. Standalone preview callers may override this.
+  require_feedback_for_completion: true
+  # Optional path tracking check. Keep null until hardware tracking data has
+  # been characterized; terminal completion still uses the tolerance above.
+  max_tracking_error_rad: null
+  # REPORT retains execution and surfaces the event to the ROS boundary.
+  tick_lag_action: report
+  tracking_error_action: report
+  # On a terminal feedback timeout retain a zero-velocity hold setpoint.
+  timeout_action: hold

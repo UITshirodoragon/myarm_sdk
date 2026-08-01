@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>myarm_bringup</name>
+  <version>0.0.1</version>
+  <description>Launch profiles for the MyArm M750 runtime system.</description>
+  <maintainer email="maintainer@example.com">myarm_sdk maintainers</maintainer>
+  <license>All rights reserved</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>myarm_description</exec_depend>
+  <exec_depend>myarm_kinematics</exec_depend>
+  <exec_depend>myarm_motion_execution</exec_depend>
+  <exec_depend>myarm_robot_driver</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

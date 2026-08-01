@@ -19,7 +19,7 @@ from myarm_sdk.core import (
 )
 from myarm_sdk.plugin_adapter.kinematics import PinocchioKinematicsAdapter
 from myarm_sdk.plugin_adapter.robot_arm.myarm_m750_robot_arm import (
-    MyArmM750RobotArmAdapter,
+    MyArmM750RobotArm,
 )
 from myarm_sdk.service import KinematicsService
 
@@ -184,9 +184,9 @@ def test_q5_zero_is_reported_as_singular_and_position_only_is_explicit(adapter):
 
 
 def test_robot_adapter_calibration_converts_hardware_feedback_to_model_space():
-    adapter = object.__new__(MyArmM750RobotArmAdapter)
+    adapter = object.__new__(MyArmM750RobotArm)
     adapter._model_to_hardware_offsets_rad = (  # pylint: disable=protected-access
-        MyArmM750RobotArmAdapter.DEFAULT_MODEL_TO_HARDWARE_OFFSETS_RAD
+        MyArmM750RobotArm.DEFAULT_MODEL_TO_HARDWARE_OFFSETS_RAD
     )
     model = JointPositions((0.1, -0.2, 0.3, -0.4, 0.5, -0.6))
 
@@ -199,12 +199,12 @@ def test_robot_adapter_calibration_converts_hardware_feedback_to_model_space():
 
 
 def test_configured_service_uses_fresh_measured_model_state_as_real_ik_seed(adapter):
-    service_config = load_sdk_yaml("service/config/services.yaml")["services"][
-        "kinematics"
-    ]
+    config = load_sdk_yaml("service/config/services.yaml")
+    service_config = config["services"]["kinematics"]
     service = KinematicsService.from_config(
         service_config,
         lambda package: str(PROJECT_ROOT / "ros2_ws/src" / package),
+        robot_config=config["robot"],
     )
     target = adapter.forward(JointPositions((0.20, -0.40, 0.80, 0.50, 0.50, -0.80)))
     service.set_target_pose(target)

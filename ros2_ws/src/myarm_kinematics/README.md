@@ -5,9 +5,9 @@ The service configuration is packaged with pycore at
 `myarm_sdk/service/config/services.yaml`.
 
 By default IK uses fresh canonical model-space feedback from
-`/myarm/state/joint_state` as its seed. It does **not** use `/joint_states`,
-because that topic is produced by the RViz visualization bridge from a command,
-not from the physical arm.
+`/myarm/state/joint_state` as its seed. It does **not** use `/joint_states`;
+the driver publishes the visualization topic separately so only its six arm
+joints are forwarded to the kinematics boundary.
 
 Run the complete Jetson-side visualization chain:
 
@@ -29,7 +29,8 @@ ros2 topic pub --once /myarm/command/tcp_pose geometry_msgs/msg/PoseStamped \
 
 Outputs:
 
-- `/myarm/command/joint_target`: only a new, validated IK solution.
+- `/myarm/command/joint_goal`: only a new, validated IK solution. It is an
+  endpoint goal for `myarm_motion_execution`, not a direct driver command.
 - `/myarm/state/tcp_pose`: FK of measured feedback.
 - `/myarm/kinematics/commanded_tcp_pose`: FK of the last safe command.
 - `/myarm/kinematics/ik_status` (`DiagnosticArray`): convergence, reason,

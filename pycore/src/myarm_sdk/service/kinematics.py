@@ -88,8 +88,14 @@ class KinematicsService:
         cls,
         service_config: Mapping[str, Any],
         package_share_directory: Callable[[str], str],
+        robot_config: Optional[Mapping[str, Any]] = None,
     ) -> KinematicsService:
-        """Create the configured Pinocchio service using an injected ROS resolver."""
+        """Create the configured service using an injected package resolver.
+
+        ``robot_config`` is the shared ``robot`` block in ``services.yaml``.
+        It is optional only to keep direct SDK construction compatible while
+        callers migrate from the former kinematics-local named-pose config.
+        """
         require_enabled(service_config, "kinematics")
         if service_config.get("plugin_adapter") != "pinocchio":
             raise ValueError("Only the pinocchio kinematics plugin adapter is available")
@@ -114,9 +120,36 @@ class KinematicsService:
                 "kinematics positive direction must follow the URDF right-hand rule"
             )
         joint_names = tuple(str(name) for name in joint_order["names"])
-        robot_description = cls._mapping(
+        adapter_robot_description = cls._mapping(
             adapter_config.get("robot_description"), "robot_description"
         )
+        if robot_config is None:
+            robot_description = adapter_robot_description
+            named_pose_config = service_config
+        else:
+            robot_description = cls._mapping(
+                robot_config.get("robot_description"), "robot.robot_description"
+            )
+            if (
+                str(adapter_robot_description.get("package"))
+                != str(robot_description.get("package"))
+                or str(adapter_robot_description.get("relative_path"))
+                != str(robot_description.get("relative_path"))
+            ):
+                raise ValueError(
+                    "kinematics adapter robot_description must match the shared "
+                    "robot.robot_description"
+                )
+            shared_joint_order = cls._mapping(
+                robot_config.get("joint_order"), "robot.joint_order"
+            )
+            if shared_joint_order.get("source") != "urdf":
+                raise ValueError("robot.joint_order.source must be 'urdf'")
+            if tuple(str(name) for name in shared_joint_order["names"]) != joint_names:
+                raise ValueError(
+                    "robot.joint_order.names must match kinematics joint_order.names"
+                )
+            named_pose_config = robot_config
         description_share = Path(
             package_share_directory(str(robot_description["package"]))
         )
@@ -133,7 +166,7 @@ class KinematicsService:
             default_policy=policy,
         )
 
-        named_poses = cls._mapping(service_config.get("named_poses"), "named_poses")
+        named_poses = cls._mapping(named_pose_config.get("named_poses"), "named_poses")
         initial_pose_name = str(service_config["initial_named_pose"])
         try:
             initial_values = named_poses[initial_pose_name]["positions_rad"]

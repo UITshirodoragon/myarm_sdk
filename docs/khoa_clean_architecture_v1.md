@@ -1,492 +1,215 @@
-Được. Với quyết định mới này, tôi chốt theo hướng đơn giản hơn:
+# MyArm SDK architecture
 
-- Bỏ `runtime_assembly/` trong giai đoạn hiện tại.
-- Không có `application/` hay `api/`.
-- ROS 2 node làm việc trực tiếp với đúng service nó cần.
-- `service/config/` chỉ có đúng một file: `services.yaml`.
-- Camera được nhận diện bằng instance ID `cam01`, `cam02`; không cần khái niệm role `wrist` hay `shoulder`.
-- Cờ `enabled` quyết định service hoặc camera instance nào được chạy.
-
-Lưu ý kiến trúc: khi bỏ `RuntimeAssembler`, việc tạo adapter từ config vẫn phải diễn ra ở đâu đó. Ở phiên bản đơn giản này, mỗi service sẽ có factory classmethod `from_config()`. ROS node gọi service đó trực tiếp.
+Tài liệu này mô tả cấu trúc hiện tại của `myarm_sdk`. Mục tiêu là giữ pycore
+độc lập ROS và độc lập hardware transport, trong khi node ROS 2 chỉ là boundary
+map message/topic/action sang service phù hợp.
 
 ```text
-ROS node
-  ↓
-KinematicsService.from_config(...)
-  ↓
-KinematicsInterface
-  ↓
-PinocchioKinematicsAdapter
+ROS 2 node → service → port_interface → plugin_adapter
 ```
 
-## Cấu trúc pycore chốt
+Không có `application/`, `api/` hoặc `runtime_assembly/` ở giai đoạn này. Mỗi
+node gọi trực tiếp đúng service mà nó cần. Factory `from_config()` của service
+là composition point nhỏ, chọn plugin adapter từ manifest.
+
+## Cấu trúc pycore
 
 ```text
 myarm_sdk/
 ├── core/
-│   ├── __init__.py
-│   ├── pose.py
-│   ├── joint_positions.py
-│   ├── camera_frame.py
-│   ├── spatial.py
-│   ├── configuration.py
-│   └── validation.py
-│
+│   ├── pose.py, joint_positions.py, joint_metadata.py
+│   ├── joint_trajectory.py, trajectory_point.py, trajectory_planning.py
+│   ├── motion_execution.py
+│   ├── robot_arm.py, urdf.py
+│   └── spatial.py, configuration.py, validation.py
 ├── port_interface/
-│   ├── __init__.py
-│   ├── camera.py
-│   ├── controller.py
-│   ├── kinematics.py
-│   ├── robot_arm.py
-│   └── trajectory.py
-│
+│   ├── camera.py                 # CameraInterface
+│   ├── kinematics.py             # KinematicsInterface
+│   ├── robot_arm.py              # RobotArmInterface
+│   ├── trajectory.py             # TrajectoryPlannerInterface
+│   └── motion_execution.py       # MotionExecutionInterface
 ├── plugin_adapter/
-│   ├── __init__.py
 │   ├── camera/
-│   │   ├── __init__.py
-│   │   ├── opencv_camera.py
-│   │   └── config/
-│   │       ├── default.yaml
-│   │       ├── cam01.yaml
-│   │       └── cam02.yaml
-│   │
-│   ├── controller/
-│   │   ├── __init__.py
-│   │   ├── memory_controller.py
-│   │   └── config/
-│   │       └── default.yaml
-│   │
 │   ├── kinematics/
-│   │   ├── __init__.py
-│   │   ├── identity_kinematics.py
-│   │   ├── pinocchio_kinematics.py
-│   │   └── config/
-│   │       ├── default.yaml
-│   │       └── pinocchio_m750_poe.yaml
-│   │
 │   ├── robot_arm/
-│   │   ├── __init__.py
-│   │   ├── fake_robot_arm.py
-│   │   ├── myarm_m750_robot_arm.py
-│   │   └── config/
-│   │       └── default.yaml
-│   │
-│   └── trajectory/
-│       ├── __init__.py
-│       ├── linear_trajectory.py
-│       └── config/
-│           └── default.yaml
-│
+│   ├── trajectory/
+│   │   └── minimum_jerk_joint_trajectory.py
+│   └── motion_execution/
+│       └── monotonic_time_motion_execution.py
 └── service/
-    ├── __init__.py
     ├── camera.py
-    ├── controller.py
     ├── kinematics.py
-    ├── trajectory.py
-    └── config/
-        └── services.yaml
+    ├── robot_arm.py
+    ├── trajectory.py             # TrajectoryPlannerService
+    ├── motion_execution.py       # MotionExecutionService
+    └── config/services.yaml
 ```
 
-Không có config riêng trong `port_interface/`. Interface chỉ là contract.
+Tên `controller` đã được bỏ. Trong kiến trúc này nó quá mơ hồ: phần lập kế
+hoạch là `TrajectoryPlanner`, còn phần tiến hành một trajectory theo clock là
+`MotionExecution`.
 
-## Tên class chốt
+## Config
 
-```text
-port_interface/
-    CameraInterface
-    ControllerInterface
-    KinematicsInterface
-    RobotArmInterface
-    TrajectoryInterface
+Có hai cấp config.
 
-plugin_adapter/
-    OpenCVCameraAdapter
-    MemoryControllerAdapter
-    PinocchioKinematicsAdapter
-    MyArmM750RobotArmAdapter
-    LinearTrajectoryAdapter
+1. `plugin_adapter/<module>/config/*.yaml` là profile cụ thể cho adapter.
+   Ví dụ camera instance, serial connection, Pinocchio solver, acceleration
+   limit hoặc policy executor.
+2. `service/config/services.yaml` là manifest cấp cao nhất hiện tại. Nó chọn
+   plugin, bật/tắt capability, topic ROS, rate, URDF và named pose chung.
 
-service/
-    CameraService
-    ControllerService
-    KinematicsService
-    TrajectoryService
-```
+`port_interface` không có config vì nó chỉ định nghĩa contract.
 
-## Hai cấp config còn lại
+### Camera theo instance
 
-Do bỏ runtime assembly và gom service config thành một file, kiến trúc thực tế còn hai cấp config:
-
-```text
-1. Plugin adapter config
-   → profile/backend/hardware instance cụ thể
-
-2. service/config/services.yaml
-   → config cao nhất hiện tại:
-     bật/tắt service, chọn plugin adapter,
-     chọn camera instance, tốc độ, named pose...
-```
-
-Sau này nếu deployment bắt đầu có nhiều Jetson/lab/simulation khác nhau, bạn có thể thêm cấp runtime lại. Hiện tại chưa cần.
-
-## Adapter config camera
-
-`plugin_adapter/camera/config/cam01.yaml`
+`cam01` và `cam02` là identity của camera, không phải role. Một deployment có
+thể bật chỉ `cam01`, chỉ `cam02`, hoặc cả hai. Mỗi instance dùng profile riêng
+để calibration intrinsic không bị lẫn:
 
 ```yaml
-instance_id: cam01
-plugin_adapter: opencv
-
-device:
-  device_path: /dev/video-by-id/usb-MyCamera_cam01-video-index0
-  fallback_index: 0
-
-capture:
-  width: 640
-  height: 480
-  fps: 5
-  encoding: bgr8
-
-intrinsic_calibration:
-  camera_info_url: package://myarm_calibration/cam01_intrinsics.yaml
-
-frames:
-  optical_frame: cam01_optical_frame
-```
-
-`plugin_adapter/camera/config/cam02.yaml`
-
-```yaml
-instance_id: cam02
-plugin_adapter: opencv
-
-device:
-  device_path: /dev/video-by-id/usb-MyCamera_cam02-video-index0
-  fallback_index: 1
-
-capture:
-  width: 640
-  height: 480
-  fps: 5
-  encoding: bgr8
-
-intrinsic_calibration:
-  camera_info_url: package://myarm_calibration/cam02_intrinsics.yaml
-
-frames:
-  optical_frame: cam02_optical_frame
-```
-
-`cam01` và `cam02` là identity thực. Không cần `wrist` hoặc `shoulder`.
-
-Nếu một camera gắn ở wrist, thông tin mount/extrinsic thuộc deployment/service config, không thuộc intrinsic calibration của adapter camera.
-
-## Một service config duy nhất
-
-`service/config/services.yaml`
-
-```yaml
-schema_version: 1
-
-defaults:
-  update_rate_hz: 5.0
-
 services:
   camera:
     enabled: true
-
     instances:
       cam01:
         enabled: true
         plugin_adapter: opencv
         plugin_config: plugin_adapter/camera/config/cam01.yaml
-
-        topic_namespace: /myarm/cameras/cam01
-        publish_rate_hz: 5.0
-
-        mount:
-          parent_frame: wrist_link
-          child_frame: cam01_link
-          translation_m: [0.030, 0.000, 0.040]
-          rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-
       cam02:
         enabled: false
         plugin_adapter: opencv
         plugin_config: plugin_adapter/camera/config/cam02.yaml
-
-        topic_namespace: /myarm/cameras/cam02
-        publish_rate_hz: 5.0
-
-        mount:
-          parent_frame: shoulder_link
-          child_frame: cam02_link
-          translation_m: [0.040, 0.000, 0.030]
-          rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-
-  kinematics:
-    enabled: true
-    plugin_adapter: pinocchio
-    plugin_config: plugin_adapter/kinematics/config/pinocchio_m750_poe.yaml
-    update_rate_hz: 5.0
-
-    initial_named_pose: zero
-
-  trajectory:
-    enabled: false
-    plugin_adapter: linear
-    plugin_config: plugin_adapter/trajectory/config/default.yaml
-    update_rate_hz: 5.0
-
-  controller:
-    enabled: false
-    plugin_adapter: memory
-    plugin_config: plugin_adapter/controller/config/default.yaml
-    update_rate_hz: 5.0
 ```
 
-Chỉ dùng `cam01`:
+Thông tin mount/extrinsic (parent frame, child frame, pose) nằm trong manifest
+deployment/service. Vì vậy cùng `cam01` có thể gắn wrist ở deployment này và
+gắn shoulder ở deployment khác mà không sửa calibration intrinsic.
+
+## Kinematics
+
+`PinocchioKinematicsAdapter` dùng URDF làm source of truth cho:
+
+- joint order canonical;
+- axis/chiều dương theo quy tắc bàn tay phải của URDF;
+- hard position limit và velocity limit;
+- `base_link` và `tool0` transform tree.
+
+YAML chỉ chọn URDF/frame và đặt solver policy. Pose dùng metre + quaternion
+`xyzw`/SE(3) xuyên suốt; không nội suy Euler. IK nhận target pose, seed và
+policy; kết quả có solution, residual position/orientation, iteration,
+singularity metric và failure reason. `home` là seed/initial pose mặc định;
+`zero` không dùng mặc định vì wrist singularity gần `q5 ≈ 0`.
+
+`MyArmKinematicsNode` luôn lấy feedback canonical model-space từ
+`/myarm/state/joint_state`. Khi IK thành công, nó chỉ publish endpoint an toàn
+vào `/myarm/command/joint_goal`; nó không chạm robot driver trực tiếp.
+
+## Trajectory planner
+
+`TrajectoryPlannerInterface` được cài bởi
+`MinimumJerkJointTrajectoryAdapter` và được expose bởi
+`TrajectoryPlannerService`.
+
+```text
+q_start measured + q_goal + limits + time-scaling policy
+  → validated JointTrajectory(time, q, qdot, qddot)
+```
+
+Planner dùng quintic minimum-jerk. `q`, `qdot`, `qddot` liên tục; qdot/qddot
+bằng 0 ở đầu và cuối. Mọi point được validate theo hard position limit, URDF
+velocity limit và acceleration limit trong profile YAML. Timestamp luôn bắt
+đầu `t=0` và tăng nghiêm ngặt.
+
+Các mode `TimeScalingPolicy`:
+
+- `auto_limited`: chọn duration tối thiểu an toàn.
+- `requested_duration_stretch`: tôn trọng duration nếu đủ; thiếu thì kéo dài.
+- `requested_duration_strict`: reject nếu duration không đạt limit.
+- `speed_scale`: với `0 < r ≤ 1`, `T = T_base/r`; qdot scale `r`, qddot scale
+  `r²`.
+
+Không có trường hợp trả trajectory lỗi để rồi gửi xuống robot.
+
+## Motion execution và robot arm
+
+`MotionExecutionInterface` được cài bởi
+`MonotonicTimeMotionExecutionAdapter`; `MotionExecutionService` giữ lifecycle
+`idle/executing/holding/canceled/succeeded/fault` và sample trajectory theo
+monotonic clock. Nó không import ROS, không mở serial và không sở hữu robot.
+
+`RobotArmService` ngược lại chỉ sở hữu một `RobotArmInterface`, có các trách
+nhiệm nhỏ và rõ:
+
+- lifecycle `connect`, `disconnect`, `power_on/off`, `stop`;
+- `read_feedback()` không làm timer chết khi adapter lỗi;
+- `send_joint_setpoint()` gửi một q đã được executor authorize.
+
+Nó không queue goal, không plan, không preempt và không nội suy trajectory.
+`FakeRobotArm` là memory robot: nó lưu đúng setpoint đã chấp nhận. Với
+`MyArmM750RobotArm`, command và measured feedback luôn khác biệt cho tới khi
+firmware trả feedback mới.
+
+Physical motion phải opt-in rõ ràng:
 
 ```yaml
 services:
-  camera:
-    enabled: true
-    instances:
-      cam01:
-        enabled: true
-      cam02:
-        enabled: false
+  robot_arm:
+    transport:
+      accept_internal_setpoints: true
+      allow_physical_motion: false
 ```
 
-Dùng cả hai:
+`allow_physical_motion: false` vẫn cho phép feedback và RViz, nhưng driver
+không tạo subscription nhận setpoint execution cho robot thật.
 
-```yaml
-services:
-  camera:
-    enabled: true
-    instances:
-      cam01:
-        enabled: true
-      cam02:
-        enabled: true
-```
-
-Tắt toàn bộ camera:
-
-```yaml
-services:
-  camera:
-    enabled: false
-```
-
-## Service factory trực tiếp
-
-Ví dụ `service/camera.py`:
-
-```python
-from myarm_sdk.plugin_adapter.camera.opencv_camera import OpenCVCameraAdapter
-
-
-class CameraService:
-    def __init__(self, camera, camera_id, optical_frame):
-        self._camera = camera
-        self._camera_id = camera_id
-        self._optical_frame = optical_frame
-
-    @classmethod
-    def from_config(cls, camera_config):
-        if camera_config.plugin_adapter != "opencv":
-            raise ValueError(
-                f"Unsupported camera adapter: {camera_config.plugin_adapter}"
-            )
-
-        adapter_config = load_adapter_config(
-            camera_config.plugin_config
-        )
-
-        camera = OpenCVCameraAdapter(
-            device_path=adapter_config.device.device_path,
-            fallback_index=adapter_config.device.fallback_index,
-        )
-
-        return cls(
-            camera=camera,
-            camera_id=adapter_config.instance_id,
-            optical_frame=adapter_config.frames.optical_frame,
-        )
-
-    def capture_once(self):
-        return self._camera.capture()
-
-    def close(self):
-        self._camera.close()
-```
-
-Trong kiến trúc đơn giản này, `CameraService.from_config()` là nơi chọn plugin adapter. Sau này nếu số plugin phức tạp hơn, logic này mới cần tách ra thành registry hoặc assembler.
-
-Ví dụ `service/kinematics.py`:
-
-```python
-from myarm_sdk.plugin_adapter.kinematics.pinocchio_kinematics import (
-    PinocchioKinematicsAdapter,
-)
-
-
-class KinematicsService:
-    def __init__(self, kinematics, initial_joints):
-        self._kinematics = kinematics
-        self._last_solution = initial_joints
-        self._target_pose = None
-
-    @classmethod
-    def from_config(cls, config):
-        if config.plugin_adapter != "pinocchio":
-            raise ValueError(
-                f"Unsupported kinematics adapter: {config.plugin_adapter}"
-            )
-
-        adapter_config = load_adapter_config(config.plugin_config)
-
-        kinematics = PinocchioKinematicsAdapter(
-            urdf_path=resolve_robot_description(
-                package_name=adapter_config.robot_description.package,
-                relative_path=adapter_config.robot_description.relative_path,
-            ),
-            tool_frame=adapter_config.tool_frame,
-        )
-
-        return cls(
-            kinematics=kinematics,
-            initial_joints=load_named_pose(config.initial_named_pose),
-        )
-
-    def set_target_pose(self, pose):
-        self._target_pose = pose
-
-    def step(self):
-        solution = self._kinematics.inverse(
-            self._target_pose,
-            self._last_solution,
-        )
-        tcp_pose = self._kinematics.forward(solution)
-        self._last_solution = solution
-
-        return solution, tcp_pose
-```
-
-## ROS node gọi trực tiếp service
-
-Camera node:
-
-```python
-class CameraNode(Node):
-    def __init__(self, service, camera_config):
-        super().__init__(f"myarm_camera_{camera_config.instance_id}")
-
-        self._service = service
-        self._publisher = self.create_publisher(
-            Image,
-            f"{camera_config.topic_namespace}/image_raw",
-            10,
-        )
-        self._timer = self.create_timer(
-            1.0 / camera_config.publish_rate_hz,
-            self._publish_frame,
-        )
-
-    def _publish_frame(self):
-        frame = self._service.capture_once()
-        message = to_ros_image(frame.data, frame.encoding)
-        message.header.stamp = self.get_clock().now().to_msg()
-        self._publisher.publish(message)
-```
-
-Entrypoint camera nhận instance ID:
-
-```python
-def main(camera_id: str):
-    config = load_services_config(
-        "service/config/services.yaml"
-    )
-
-    camera_config = config.services.camera.instances[camera_id]
-
-    if not config.services.camera.enabled:
-        raise RuntimeError("Camera service is disabled")
-
-    if not camera_config.enabled:
-        raise RuntimeError(f"Camera instance {camera_id} is disabled")
-
-    service = CameraService.from_config(camera_config)
-
-    rclpy.init()
-    node = CameraNode(service, camera_config)
-    rclpy.spin(node)
-```
-
-Kinematics node:
-
-```python
-def main():
-    config = load_services_config(
-        "service/config/services.yaml"
-    )
-
-    if not config.services.kinematics.enabled:
-        raise RuntimeError("Kinematics service is disabled")
-
-    service = KinematicsService.from_config(
-        config.services.kinematics
-    )
-
-    rclpy.init()
-    node = CartesianCommandNode(service)
-    rclpy.spin(node)
-```
-
-Như vậy:
+## ROS runtime
 
 ```text
-CameraNode
-→ CameraService
-→ CameraInterface
-→ OpenCVCameraAdapter
-
-CartesianCommandNode
-→ KinematicsService
-→ KinematicsInterface
-→ PinocchioKinematicsAdapter
-
-TrajectoryNode
-→ TrajectoryService
-→ TrajectoryInterface
-→ LinearTrajectoryAdapter
+/myarm/command/tcp_pose
+  → MyArmKinematicsNode
+  → /myarm/command/joint_goal
+  → MyArmMotionExecutionNode
+      + /myarm/state/joint_state fresh feedback
+  → TrajectoryPlannerService
+  → MotionExecutionService
+  → /myarm/internal/driver_joint_setpoint
+  → MyArmRobotDriverNode
+  → FakeRobotArm | MyArmM750RobotArm
+  → /myarm/state/joint_state and /joint_states
+  → robot_state_publisher → /tf, /tf_static → RViz2
 ```
 
-## Quy ước tên file config
+`myarm_robot_driver` là serial owner duy nhất. Nó không nhận public direct
+joint target; input của nó là private setpoint stream từ executor. Điều này
+tránh hai node cùng điều khiển robot.
 
-```text
-default.yaml
-    Cấu hình mặc định an toàn cho một plugin adapter.
+`myarm_motion_execution` còn cung cấp:
 
-<instance_id>.yaml
-    Config của hardware instance.
-    Ví dụ: cam01.yaml, cam02.yaml
+- `/myarm/trajectory/preview` với full `q/qdot/qddot`;
+- action `/myarm/follow_joint_trajectory` cho full trajectory từ client;
+- diagnostic, cancel và reset cho topic-driven motion.
 
-<adapter>_<profile>.yaml
-    Config một backend/model profile.
-    Ví dụ: pinocchio_m750_poe.yaml
+Action chỉ nhận trajectory canonical đủ q/qdot/qddot, `t=0`, tất cả limit hợp
+lệ và q0 gần feedback thật. Nó không dùng `time.sleep`; timer 5 Hz độc lập
+tiến hành executor trong multi-threaded ROS executor.
 
-services.yaml
-    File config duy nhất của toàn bộ service.
-```
+## Deployment modes
 
-Tất cả dùng:
+`myarm_bringup` chạy trên Jetson và có launch flag độc lập:
 
-```text
-lowercase
-snake_case
-.yaml
-```
+- `enable_driver` để chọn fake/physical feedback driver;
+- `enable_kinematics` để bật IK/FK;
+- `enable_motion_execution` để bật joint planning/execution;
+- `enable_robot_state_publisher` để phát TF cho RViz.
 
-Điểm chốt cuối: `services.yaml` là source of truth bật/tắt service và instance. Các YAML ở `plugin_adapter/*/config/` chỉ là profile/config chi tiết cho backend hoặc hardware instance.
+Do đó có thể:
+
+- fake robot + RViz: bật tất cả (profile default);
+- physical robot không RViz: tắt `enable_robot_state_publisher`;
+- RViz chỉ với state ngoài: tắt driver nhưng cần một publisher `/joint_states`;
+- host PC chỉ chạy RViz, còn `robot_state_publisher` và TF chạy Jetson qua DDS.
+
+Mọi rate mặc định của driver, kinematics, planner/executor là 5 Hz. Đây là
+profile bảo thủ cho demo/lab; acceleration/feedback/tracking policy cần được
+tune và xác nhận trên hardware trước khi production motion được bật.

@@ -1,0 +1,16 @@
+plugin_adapter: myarm_m750_robot_arm
+connection:
+  serial_port: /dev/myarm_m750
+  baudrate: 1000000
+  timeout_s: 0.1
+  debug: false
+command:
+  fresh_mode: latest
+  default_speed_scale: 0.5
+lifecycle:
+  power_on_on_connect: false
+joint_convention:
+  # q_hardware = q_model + model_to_hardware_offsets_rad
+  source: myarm_m750_poe_v3_2_urdf
+  model_to_hardware_offsets_rad:
+    [0.0, 0.17453292519943295, -0.17453292519943295, 0.0, 0.0, 0.0]

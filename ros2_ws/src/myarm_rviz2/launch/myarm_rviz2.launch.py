@@ -6,7 +6,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    """Start RViz2; robot_state_publisher must already be running."""
+    """Start a remote-view-only RViz2; Jetson owns robot_state_publisher."""
     config = Path(get_package_share_directory("myarm_rviz2")) / "config" / "myarm_m750.rviz"
     return LaunchDescription([
         Node(
