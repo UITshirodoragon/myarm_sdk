@@ -12,11 +12,13 @@ from myarm_sdk.core import (
     JointPositions,
     TimeScalingMode,
     TimeScalingPolicy,
-    TrajectoryPlanningFailureReason,
-    TrajectoryPlanningRequest,
+    JointTrajectoryPlanningFailureReason,
+    JointTrajectoryPlanningRequest,
 )
-from myarm_sdk.plugin_adapter.trajectory import MinimumJerkJointTrajectoryAdapter
-from myarm_sdk.service import TrajectoryPlannerService
+from myarm_sdk.plugin_adapter.trajectory import (
+    MinimumJerkJointTrajectoryPlannerAdapter,
+)
+from myarm_sdk.service import JointTrajectoryPlannerService
 
 
 def _motion_limits() -> JointMotionLimits:
@@ -36,8 +38,8 @@ def _motion_limits() -> JointMotionLimits:
 def _request(
     policy: TimeScalingPolicy,
     target: Optional[JointPositions] = None,
-) -> TrajectoryPlanningRequest:
-    return TrajectoryPlanningRequest(
+) -> JointTrajectoryPlanningRequest:
+    return JointTrajectoryPlanningRequest(
         q_start=JointPositions((0.0,) * 6),
         q_goal=target or JointPositions((1.0, 0.0, 0.0, 0.0, 0.0, 0.0)),
         motion_limits=_motion_limits(),
@@ -46,7 +48,7 @@ def _request(
 
 
 def test_minimum_jerk_planner_outputs_complete_validated_trajectory():
-    planner = MinimumJerkJointTrajectoryAdapter()
+    planner = MinimumJerkJointTrajectoryPlannerAdapter()
     result = planner.plan(_request(TimeScalingPolicy(sample_period_s=0.2)))
 
     assert result.succeeded
@@ -75,7 +77,7 @@ def test_minimum_jerk_planner_outputs_complete_validated_trajectory():
 
 
 def test_requested_duration_stretch_extends_but_strict_rejects():
-    planner = MinimumJerkJointTrajectoryAdapter()
+    planner = MinimumJerkJointTrajectoryPlannerAdapter()
     stretch_result = planner.plan(
         _request(
             TimeScalingPolicy(
@@ -102,12 +104,12 @@ def test_requested_duration_stretch_extends_but_strict_rejects():
     assert strict_result.trajectory is None
     assert (
         strict_result.failure_reason
-        is TrajectoryPlanningFailureReason.DURATION_BELOW_LIMIT
+        is JointTrajectoryPlanningFailureReason.DURATION_BELOW_LIMIT
     )
 
 
 def test_speed_scale_stretches_the_resolved_base_duration():
-    planner = MinimumJerkJointTrajectoryAdapter()
+    planner = MinimumJerkJointTrajectoryPlannerAdapter()
     automatic = planner.plan(_request(TimeScalingPolicy()))
     scaled = planner.plan(
         _request(
@@ -126,7 +128,7 @@ def test_speed_scale_stretches_the_resolved_base_duration():
 
 
 def test_out_of_limit_goal_returns_failure_without_trajectory():
-    result = MinimumJerkJointTrajectoryAdapter().plan(
+    result = MinimumJerkJointTrajectoryPlannerAdapter().plan(
         _request(
             TimeScalingPolicy(),
             target=JointPositions((2.1, 0.0, 0.0, 0.0, 0.0, 0.0)),
@@ -135,7 +137,10 @@ def test_out_of_limit_goal_returns_failure_without_trajectory():
 
     assert not result.succeeded
     assert result.trajectory is None
-    assert result.failure_reason is TrajectoryPlanningFailureReason.GOAL_OUT_OF_LIMIT
+    assert (
+        result.failure_reason
+        is JointTrajectoryPlanningFailureReason.GOAL_OUT_OF_LIMIT
+    )
 
 
 def test_service_loads_the_named_acceleration_profile():
@@ -156,13 +161,13 @@ def test_service_loads_the_named_acceleration_profile():
             "wrist_roll_joint",
         )
     )
-    service = TrajectoryPlannerService.from_config(
+    service = JointTrajectoryPlannerService.from_config(
         {
             "enabled": True,
             "plugin_adapter": "minimum_jerk_joint",
             "plugin_config": (
                 "plugin_adapter/trajectory/config/"
-                "minimum_jerk_joint_trajectory.yaml"
+                "minimum_jerk_joint_trajectory_planner.yaml"
             ),
         },
         metadata,

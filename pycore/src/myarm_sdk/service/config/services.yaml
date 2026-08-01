@@ -111,11 +111,33 @@ services:
       commanded_tcp_pose: /myarm/kinematics/commanded_tcp_pose
       ik_status: /myarm/kinematics/ik_status
 
-  trajectory_planner:
+  joint_trajectory_planner:
     enabled: true
     plugin_adapter: minimum_jerk_joint
-    plugin_config: plugin_adapter/trajectory/config/minimum_jerk_joint_trajectory.yaml
+    plugin_config: plugin_adapter/trajectory/config/minimum_jerk_joint_trajectory_planner.yaml
     update_rate_hz: 5.0
+
+  # Offline Cartesian TCP planning. ``enabled`` marks this configured service
+  # as available; process activation remains opt-in at the composition layer
+  # through myarm_system.launch.py enable_cartesian_trajectory:=true (default
+  # false). This keeps the baseline bringup free of Cartesian planning while
+  # allowing the dedicated preview/fake/headless launches to share one config.
+  # The service has no transport authority: it returns a validated
+  # JointTrajectory for preview or an explicit later handoff to motion
+  # execution. It never publishes a driver setpoint itself.
+  cartesian_trajectory_planner:
+    enabled: true
+    plugin_adapter: cartesian_sequential_clik
+    plugin_config: plugin_adapter/trajectory/config/cartesian_sequential_clik_trajectory_planner.yaml
+    update_rate_hz: 5.0
+    feedback:
+      measured_state_max_age_s: 0.5
+    topics:
+      plan_action: /myarm/plan_cartesian_trajectory
+      measured_joint_state: /myarm/state/joint_state
+      reference_path: /myarm/cartesian_trajectory/reference_path
+      joint_preview: /myarm/cartesian_trajectory/joint_preview
+      diagnostics: /myarm/cartesian_trajectory/diagnostics
 
   motion_execution:
     enabled: true
@@ -134,8 +156,13 @@ services:
       internal_setpoint: /myarm/internal/driver_joint_setpoint
       driver_safety_state: /myarm/robot/safety_state
       driver_stop_service: /myarm/robot/stop
-      preview: /myarm/trajectory/preview
+      preview: /myarm/joint_trajectory/preview
       diagnostics: /myarm/motion_execution/diagnostics
       follow_joint_trajectory: /myarm/follow_joint_trajectory
+      # Owned by myarm_motion_execution, not by the plan-only Cartesian node.
+      # The action server is created only by a fake-execution launch in this
+      # phase; it still uses the same executor and driver safety gates.
+      follow_cartesian_trajectory: /myarm/follow_cartesian_trajectory
+      cartesian_reference_path: /myarm/cartesian_execution/reference_path
       cancel_service: /myarm/motion_execution/cancel
       reset_service: /myarm/motion_execution/reset

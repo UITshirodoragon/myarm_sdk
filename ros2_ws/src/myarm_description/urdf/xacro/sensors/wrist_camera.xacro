@@ -1,12 +1,24 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <!--
-    Frame-only wrist camera attachment.
+    Frame-only wrist-camera attachment.
 
-    The mount pose is an application calibration input, not part of the 6R
-    kinematic model.  ``camera_link -> camera_optical_frame`` uses the ROS
-    optical-frame convention (x right, y down, z forward).  Add verified mesh
-    and collision geometry in a later component revision.
+    The transform chain is deliberately split so that the physical mounting
+    calibration remains explicit:
+
+      parent_link -> wrist_camera_mount_link -> wrist_camera_link
+                  -> wrist_camera_optical_frame
+
+    ``mount_*`` is the calibrated bracket/mount transform.  ``camera_*`` is
+    the measured body offset from that mount.  The final body-to-optical
+    transform is the fixed ROS optical-frame convention (x right, y down,
+    z forward).  Together they define:
+
+      T_parent_optical = T_parent_mount * T_mount_body * T_body_optical
+
+    None of these fixed joints change the canonical 6R chain, tool0, or its
+    Pinocchio model.  Add verified mesh and collision geometry only when the
+    physical camera dimensions are available.
   -->
   <xacro:macro name="myarm_wrist_camera"
                params="parent_link mount_xyz:='0 0 0' mount_rpy:='0 0 0'
@@ -31,5 +43,21 @@
       <child link="wrist_camera_optical_frame"/>
       <origin xyz="0 0 0" rpy="-1.570796326794897 0 -1.570796326794897"/>
     </joint>
+  </xacro:macro>
+
+  <!--
+    NeuGrasp fixes the physical parent by contract.  Keeping this wrapper
+    separate from ``myarm_wrist_camera`` preserves the latter for another
+    application that legitimately needs a different parent link.
+  -->
+  <xacro:macro name="myarm_neugrasp_wrist_camera"
+               params="mount_xyz:='0 0 0' mount_rpy:='0 0 0'
+                       camera_xyz:='0 0 0' camera_rpy:='0 0 0'">
+    <xacro:myarm_wrist_camera
+      parent_link="gripper_base_link"
+      mount_xyz="${mount_xyz}"
+      mount_rpy="${mount_rpy}"
+      camera_xyz="${camera_xyz}"
+      camera_rpy="${camera_rpy}"/>
   </xacro:macro>
 </robot>

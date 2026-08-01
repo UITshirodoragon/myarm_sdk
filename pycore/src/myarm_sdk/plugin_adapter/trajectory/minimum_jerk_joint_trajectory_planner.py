@@ -8,15 +8,15 @@ from typing import Optional
 from myarm_sdk.core import (
     JointPositions,
     JointTrajectory,
+    JointTrajectoryPlanningFailureReason,
+    JointTrajectoryPlanningRequest,
+    JointTrajectoryPlanningResult,
     TimeScalingMode,
-    TrajectoryPlanningFailureReason,
-    TrajectoryPlanningRequest,
-    TrajectoryPlanningResult,
     TrajectoryPoint,
 )
 
 
-class MinimumJerkJointTrajectoryAdapter:
+class MinimumJerkJointTrajectoryPlannerAdapter:
     """Plan synchronized point-to-point motion with a quintic profile.
 
     The adapter is pure: it has no robot I/O, feedback cache or wall clock.
@@ -27,13 +27,15 @@ class MinimumJerkJointTrajectoryAdapter:
     _MAX_NORMALIZED_ACCELERATION = 10.0 / math.sqrt(3.0)
     _FLOAT_TOLERANCE = 1e-12
 
-    def plan(self, request: TrajectoryPlanningRequest) -> TrajectoryPlanningResult:
+    def plan(
+        self, request: JointTrajectoryPlanningRequest
+    ) -> JointTrajectoryPlanningResult:
         """Create a fully sampled trajectory or return a safe failure result."""
         start_violations = request.motion_limits.position_violations(request.q_start)
         if start_violations:
             return self._failure(
                 request,
-                TrajectoryPlanningFailureReason.START_OUT_OF_LIMIT,
+                JointTrajectoryPlanningFailureReason.START_OUT_OF_LIMIT,
                 "q_start violates hard position limit: {}".format(
                     "; ".join(start_violations)
                 ),
@@ -42,7 +44,7 @@ class MinimumJerkJointTrajectoryAdapter:
         if goal_violations:
             return self._failure(
                 request,
-                TrajectoryPlanningFailureReason.GOAL_OUT_OF_LIMIT,
+                JointTrajectoryPlanningFailureReason.GOAL_OUT_OF_LIMIT,
                 "q_goal violates hard position limit: {}".format(
                     "; ".join(goal_violations)
                 ),
@@ -53,7 +55,7 @@ class MinimumJerkJointTrajectoryAdapter:
         if resolved_duration_s is None:
             return self._failure(
                 request,
-                TrajectoryPlanningFailureReason.DURATION_BELOW_LIMIT,
+                JointTrajectoryPlanningFailureReason.DURATION_BELOW_LIMIT,
                 (
                     f"requested duration "
                     f"{request.time_scaling.requested_duration_s or 0.0:.9f}s "
@@ -68,13 +70,13 @@ class MinimumJerkJointTrajectoryAdapter:
         if violations:
             return self._failure(
                 request,
-                TrajectoryPlanningFailureReason.TRAJECTORY_VALIDATION_FAILED,
+                JointTrajectoryPlanningFailureReason.TRAJECTORY_VALIDATION_FAILED,
                 "generated trajectory violates hard limits: {}".format(
                     "; ".join(violations)
                 ),
                 minimum_duration_s,
             )
-        return TrajectoryPlanningResult(
+        return JointTrajectoryPlanningResult(
             trajectory=trajectory,
             succeeded=True,
             failure_reason=None,
@@ -85,7 +87,9 @@ class MinimumJerkJointTrajectoryAdapter:
             duration_adjusted=self._duration_adjusted(request, resolved_duration_s),
         )
 
-    def minimum_duration_s(self, request: TrajectoryPlanningRequest) -> float:
+    def minimum_duration_s(
+        self, request: JointTrajectoryPlanningRequest
+    ) -> float:
         """Return the limit-safe common duration before policy time scaling.
 
         For a quintic minimum-jerk profile, ``max(s') = 15/8`` and
@@ -123,7 +127,7 @@ class MinimumJerkJointTrajectoryAdapter:
         )
 
     def _resolve_duration(
-        self, request: TrajectoryPlanningRequest, minimum_duration_s: float
+        self, request: JointTrajectoryPlanningRequest, minimum_duration_s: float
     ) -> Optional[float]:
         policy = request.time_scaling
         requested_duration_s = policy.requested_duration_s
@@ -146,7 +150,7 @@ class MinimumJerkJointTrajectoryAdapter:
         raise ValueError(f"unsupported time scaling mode: {policy.mode}")
 
     def _sample(
-        self, request: TrajectoryPlanningRequest, duration_s: float
+        self, request: JointTrajectoryPlanningRequest, duration_s: float
     ) -> JointTrajectory:
         sample_period_s = request.time_scaling.sample_period_s
         intervals = max(1, math.ceil(duration_s / sample_period_s))
@@ -214,7 +218,7 @@ class MinimumJerkJointTrajectoryAdapter:
 
     @staticmethod
     def _duration_adjusted(
-        request: TrajectoryPlanningRequest, resolved_duration_s: float
+        request: JointTrajectoryPlanningRequest, resolved_duration_s: float
     ) -> bool:
         requested_duration_s = request.time_scaling.requested_duration_s
         if requested_duration_s is None:
@@ -228,12 +232,12 @@ class MinimumJerkJointTrajectoryAdapter:
 
     @staticmethod
     def _failure(
-        request: TrajectoryPlanningRequest,
-        reason: TrajectoryPlanningFailureReason,
+        request: JointTrajectoryPlanningRequest,
+        reason: JointTrajectoryPlanningFailureReason,
         detail: str,
         minimum_duration_s: float = 0.0,
-    ) -> TrajectoryPlanningResult:
-        return TrajectoryPlanningResult(
+    ) -> JointTrajectoryPlanningResult:
+        return JointTrajectoryPlanningResult(
             trajectory=None,
             succeeded=False,
             failure_reason=reason,

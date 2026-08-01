@@ -21,7 +21,7 @@ class TimeScalingMode(str, Enum):
     SPEED_SCALE = "speed_scale"
 
 
-class TrajectoryPlanningFailureReason(str, Enum):
+class JointTrajectoryPlanningFailureReason(str, Enum):
     """Machine-readable reason why a trajectory was not produced."""
 
     START_OUT_OF_LIMIT = "start_out_of_limit"
@@ -196,7 +196,7 @@ class TimeScalingPolicy:
 
 
 @dataclass(frozen=True)
-class TrajectoryPlanningRequest:
+class JointTrajectoryPlanningRequest:
     """One request from a fresh measured state to a joint-space goal.
 
     ``q_start`` must be the caller's newest validated measured joint state for
@@ -211,12 +211,12 @@ class TrajectoryPlanningRequest:
 
 
 @dataclass(frozen=True)
-class TrajectoryPlanningResult:
+class JointTrajectoryPlanningResult:
     """Safe result of planning; failures never contain a trajectory."""
 
     trajectory: Optional[JointTrajectory]
     succeeded: bool
-    failure_reason: Optional[TrajectoryPlanningFailureReason]
+    failure_reason: Optional[JointTrajectoryPlanningFailureReason]
     detail: str
     requested_duration_s: Optional[float]
     minimum_duration_s: float

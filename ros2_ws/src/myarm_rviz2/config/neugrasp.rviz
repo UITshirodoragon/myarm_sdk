@@ -7,7 +7,8 @@ Panels:
         - /Global Options1
         - /Status1
         - /RobotModel1
-        - /TF1
+        - /Neugrasp Scene1
+        - /Scan Views1
       Splitter Ratio: 0.5
     Tree Height: 760
   - Class: rviz_common/Selection
@@ -38,35 +39,24 @@ Visualization Manager:
         Y: 0
         Z: 0
       Plane: XY
-      Reference Frame: <Fixed Frame>
       Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
       Value: true
+
+    # Keep TF deliberately sparse.  The scan targets are runtime data and are
+    # visualized below as poses/frustums, not as permanent scene TF frames.
     - Class: rviz_default_plugins/TF
       Enabled: true
       Frame Timeout: 15
       Frames:
-        All Enabled: true
+        All Enabled: false
         base_link:
-          Value: true
-        shoulder_link:
-          Value: true
-        upper_arm_link:
-          Value: true
-        lower_arm_link:
-          Value: true
-        forearm_link:
-          Value: true
-        wrist_link:
           Value: true
         flange_link:
           Value: true
         tool0:
           Value: true
         gripper_base_link:
-          Value: true
-        left_gripper_link:
-          Value: true
-        right_gripper_link:
           Value: true
         wrist_camera_mount_link:
           Value: true
@@ -78,47 +68,18 @@ Visualization Manager:
           Value: true
         neugrasp_volume:
           Value: true
-        scan_view_00_optical:
-          Value: true
-        scan_view_01_optical:
-          Value: true
-        scan_view_02_optical:
-          Value: true
-        scan_view_03_optical:
-          Value: true
-      Marker Scale: 0.08
-      Name: TF
+      Marker Scale: 0.07
+      Name: Semantic TF Frames
       Show Arrows: true
       Show Axes: true
-      Show Names: true
-      Tree:
-        base_link:
-          shoulder_link:
-            upper_arm_link:
-              lower_arm_link:
-                forearm_link:
-                  wrist_link:
-                    flange_link:
-                      tool0: {}
-                      gripper_base_link:
-                        left_gripper_link: {}
-                        right_gripper_link: {}
-                        wrist_camera_mount_link:
-                          wrist_camera_link:
-                            wrist_camera_optical_frame: {}
-          neugrasp_workspace:
-            neugrasp_volume: {}
-            scan_view_00_optical: {}
-            scan_view_01_optical: {}
-            scan_view_02_optical: {}
-            scan_view_03_optical: {}
+      Show Names: false
       Update Interval: 0
       Value: true
+
     - Alpha: 1
       Class: rviz_default_plugins/RobotModel
       Collision Enabled: false
       Description File: ""
-      Enabled: true
       Description Source: Topic
       Description Topic:
         Depth: 1
@@ -126,104 +87,268 @@ Visualization Manager:
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /robot_description
+      Enabled: true
       Links:
         All Links Enabled: true
         Expand Joint Details: true
         Expand Link Details: false
         Expand Tree: true
         Link Tree Style: Links in Tree Style
-        base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        shoulder_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        upper_arm_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        lower_arm_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        forearm_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        wrist_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        flange_link:
-          Alpha: 1
-          Show Axes: true
-          Show Trail: false
-          Value: true
-        tool0:
-          Alpha: 1
-          Show Axes: true
-          Show Trail: false
-          Value: true
-        gripper_base_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        left_gripper_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        right_gripper_link:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
-        wrist_camera_mount_link:
-          Alpha: 1
-          Show Axes: true
-          Show Trail: false
-          Value: true
-        wrist_camera_link:
-          Alpha: 1
-          Show Axes: true
-          Show Trail: false
-          Value: true
-        wrist_camera_optical_frame:
-          Alpha: 1
-          Show Axes: true
-          Show Trail: false
-          Value: true
       Name: RobotModel
       TF Prefix: ""
       Update Interval: 0
       Value: true
       Visual Enabled: true
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
-      Marker Topic: /neugrasp/visualization/markers
-      Name: Neugrasp Markers
+
+    # Static application geometry.  The marker header determines whether it is
+    # expressed in base_link, neugrasp_workspace, or neugrasp_volume.
+    - Alpha: 1
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /neugrasp/workspace_marker
+      Name: Neugrasp Scene
       Namespaces:
         {}
-      Queue Size: 100
-    - Class: rviz_default_plugins/PointCloud2
-      Enabled: false
-      Name: Neugrasp Point Cloud
-      Style: Points
+      Queue Size: 10
+      Value: true
+
+    # Runtime-generated scan targets: one frustum/order marker per view.
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Marker Topic: /neugrasp/scan_view_markers
+      Name: Scan View Frustums
+      Namespaces:
+        {}
+      Queue Size: 20
+      Value: true
+
+    - Alpha: 1
+      Arrow Color: 255; 210; 0
+      Arrow Length: 0.10
+      Arrow Radius: 0.012
+      Axes Length: 0.08
+      Axes Radius: 0.008
+      Class: rviz_default_plugins/PoseArray
+      Enabled: true
+      Name: Scan Target Poses
+      Shape: Axes
       Topic:
         Depth: 5
         Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /neugrasp/pointcloud
+        Value: /neugrasp/scan_views
+      Value: true
+
+    - Alpha: 1
+      Arrow Color: 25; 255; 0
+      Arrow Length: 0.09
+      Arrow Radius: 0.010
+      Axes Length: 0.07
+      Axes Radius: 0.007
+      Class: rviz_default_plugins/PoseArray
+      Enabled: true
+      Name: Planned Camera Poses
+      Shape: Axes
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /neugrasp/planned_camera_poses
+      Value: true
+
+    - Alpha: 1
+      Arrow Color: 0; 170; 255
+      Arrow Length: 0.09
+      Arrow Radius: 0.010
+      Axes Length: 0.07
+      Axes Radius: 0.007
+      Class: rviz_default_plugins/PoseArray
+      Enabled: true
+      Name: Measured Camera Poses
+      Shape: Axes
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /neugrasp/measured_camera_poses
+      Value: true
+
+    # The four scan phases repeat, so scene data uses ordinary volatile QoS.
+    # Point clouds can remain visible during a phase without forcing a latched
+    # high-volume DDS contract.
+    - Alpha: 0.85
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 90; 170; 255
+      Color Transformer: FlatColor
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Name: TSDF Cloud
+      Position Transformer: XYZ
+      Queue Size: 5
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.004
+      Style: Points
+      Topic:
+        Depth: 3
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /neugrasp/tsdf_cloud
+      Use Fixed Frame: true
+      Value: true
+
+    - Alpha: 0.60
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 80; 80
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Name: Quality Cloud
+      Position Transformer: XYZ
+      Queue Size: 3
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.005
+      Style: Points
+      Topic:
+        Depth: 3
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /neugrasp/quality_cloud
+      Use Fixed Frame: true
+      Value: true
+
+    # Candidate grippers can be numerous; keep the batch off until inspection.
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Marker Topic: /neugrasp/grasp_candidates
+      Name: Grasp Candidates
+      Namespaces:
+        {}
+      Queue Size: 20
+      Value: true
+
+    # Raw legacy PLY wireframes use the old TCP convention, not the semantic
+    # grasp-frame convention used by candidates.json.  Keep this explicit and
+    # off by default so the two orientations are never confused.
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Marker Topic: /neugrasp/legacy_grasp_wireframes
+      Name: Legacy TCP Grasp Wireframe
+      Namespaces:
+        {}
+      Queue Size: 20
+      Value: true
+
+    # The selected marker is the predicted gripper; RobotModel remains the
+    # physical robot/gripper visualization.
+    - Alpha: 1
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Marker Topic: /neugrasp/selected_grasp_marker
+      Name: Selected Grasp Gripper
+      Namespaces:
+        {}
+      Queue Size: 10
+      Value: true
+
+    - Alpha: 1
+      Axes Length: 0.10
+      Axes Radius: 0.010
+      Class: rviz_default_plugins/Pose
+      Color: 255; 80; 80
+      Enabled: false
+      Head Length: 0.03
+      Head Radius: 0.015
+      Name: Selected Grasp Pose
+      Shaft Length: 0.08
+      Shaft Radius: 0.008
+      Shape: Arrow
+      Topic:
+        Depth: 3
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /neugrasp/selected_grasp
+      Value: true
+
+    # Cartesian paths are latched by the existing planner/executor and remain
+    # useful for a scan-phase dry run or post-phase diagnosis.
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 25; 255; 0
+      Enabled: true
+      Head Diameter: 0.03
+      Head Length: 0.02
+      Length: 0.03
+      Line Style: Lines
+      Line Width: 0.015
+      Name: Cartesian Planner Reference
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 255; 85; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.01
+      Shaft Length: 0.02
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /myarm/cartesian_trajectory/reference_path
+      Value: true
+
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz_default_plugins/Path
+      Color: 0; 170; 255
+      Enabled: true
+      Head Diameter: 0.03
+      Head Length: 0.02
+      Length: 0.03
+      Line Style: Lines
+      Line Width: 0.02
+      Name: Cartesian Execution Reference
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Pose Color: 0; 170; 255
+      Pose Style: None
+      Radius: 0.03
+      Shaft Diameter: 0.01
+      Shaft Length: 0.02
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /myarm/cartesian_execution/reference_path
       Value: true
   Global Options:
     Background Color: 48; 48; 48

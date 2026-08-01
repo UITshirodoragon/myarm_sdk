@@ -13,6 +13,9 @@ import threading
 import time
 from typing import Any, Optional, Tuple
 
+from myarm_sdk.core.joint_trajectory_interpolation import (
+    sample_joint_trajectory,
+)
 from myarm_sdk.core.joint_positions import JointPositions
 from myarm_sdk.core.motion_execution import (
     MotionExecutionEvent,
@@ -489,15 +492,13 @@ class MonotonicTimeMotionExecutionAdapter:
     def _sample(
         cls, trajectory: Any, time_from_start_s: float
     ) -> MotionExecutionSetpoint:
-        points = tuple(trajectory.points)
-        if time_from_start_s <= points[0].time_from_start_s:
-            return cls._setpoint_from_point(points[0])
-        if time_from_start_s >= points[-1].time_from_start_s:
-            return cls._setpoint_from_point(points[-1])
-        for first, second in zip(points, points[1:]):
-            if first.time_from_start_s <= time_from_start_s <= second.time_from_start_s:
-                return cls._interpolate(first, second, time_from_start_s)
-        raise RuntimeError("trajectory sampling failed to find a time segment")
+        sampled = sample_joint_trajectory(trajectory, time_from_start_s)
+        return MotionExecutionSetpoint(
+            positions=sampled.positions,
+            velocities=sampled.velocities,
+            accelerations=sampled.accelerations,
+            time_from_start_s=sampled.time_from_start_s,
+        )
 
     @classmethod
     def _setpoint_from_point(cls, point: Any) -> MotionExecutionSetpoint:
@@ -507,151 +508,6 @@ class MonotonicTimeMotionExecutionAdapter:
             accelerations=cls._joint_positions_or_zero(point.accelerations),
             time_from_start_s=point.time_from_start_s,
         )
-
-    @classmethod
-    def _interpolate(
-        cls, first: Any, second: Any, sample_time_s: float
-    ) -> MotionExecutionSetpoint:
-        duration_s = second.time_from_start_s - first.time_from_start_s
-        if duration_s <= 0.0:
-            raise RuntimeError("trajectory segment duration must be positive")
-        local_time_s = sample_time_s - first.time_from_start_s
-        if first.velocities is not None and second.velocities is not None:
-            if first.accelerations is not None and second.accelerations is not None:
-                positions, velocities, accelerations = cls._quintic_interpolation(
-                    first, second, local_time_s, duration_s
-                )
-            else:
-                positions, velocities, accelerations = cls._cubic_interpolation(
-                    first, second, local_time_s, duration_s
-                )
-        else:
-            positions, velocities, accelerations = cls._linear_interpolation(
-                first, second, local_time_s, duration_s
-            )
-        return MotionExecutionSetpoint(
-            positions=JointPositions(positions),
-            velocities=JointPositions(velocities),
-            accelerations=JointPositions(accelerations),
-            time_from_start_s=sample_time_s,
-        )
-
-    @staticmethod
-    def _linear_interpolation(
-        first: Any, second: Any, local_time_s: float, duration_s: float
-    ) -> Tuple[Tuple[float, ...], Tuple[float, ...], Tuple[float, ...]]:
-        ratio = local_time_s / duration_s
-        positions = tuple(
-            start + (target - start) * ratio
-            for start, target in zip(first.positions.values, second.positions.values)
-        )
-        velocities = tuple(
-            (target - start) / duration_s
-            for start, target in zip(first.positions.values, second.positions.values)
-        )
-        return (
-            positions,
-            velocities,
-            (0.0,) * MonotonicTimeMotionExecutionAdapter._JOINT_COUNT,
-        )
-
-    @staticmethod
-    def _cubic_interpolation(
-        first: Any, second: Any, local_time_s: float, duration_s: float
-    ) -> Tuple[Tuple[float, ...], Tuple[float, ...], Tuple[float, ...]]:
-        u = local_time_s / duration_s
-        u2 = u * u
-        h00 = 2.0 * u2 * u - 3.0 * u2 + 1.0
-        h10 = u2 * u - 2.0 * u2 + u
-        h01 = -2.0 * u2 * u + 3.0 * u2
-        h11 = u2 * u - u2
-        h00_dot = 6.0 * u2 - 6.0 * u
-        h10_dot = 3.0 * u2 - 4.0 * u + 1.0
-        h01_dot = -6.0 * u2 + 6.0 * u
-        h11_dot = 3.0 * u2 - 2.0 * u
-        h00_ddot = 12.0 * u - 6.0
-        h10_ddot = 6.0 * u - 4.0
-        h01_ddot = -12.0 * u + 6.0
-        h11_ddot = 6.0 * u - 2.0
-        positions = []
-        velocities = []
-        accelerations = []
-        for q0, q1, v0, v1 in zip(
-            first.positions.values,
-            second.positions.values,
-            first.velocities.values,
-            second.velocities.values,
-        ):
-            positions.append(
-                h00 * q0 + h10 * duration_s * v0 + h01 * q1 + h11 * duration_s * v1
-            )
-            velocities.append(
-                (
-                    h00_dot * q0
-                    + h10_dot * duration_s * v0
-                    + h01_dot * q1
-                    + h11_dot * duration_s * v1
-                )
-                / duration_s
-            )
-            accelerations.append(
-                (
-                    h00_ddot * q0
-                    + h10_ddot * duration_s * v0
-                    + h01_ddot * q1
-                    + h11_ddot * duration_s * v1
-                )
-                / (duration_s * duration_s)
-            )
-        return tuple(positions), tuple(velocities), tuple(accelerations)
-
-    @staticmethod
-    def _quintic_interpolation(
-        first: Any, second: Any, local_time_s: float, duration_s: float
-    ) -> Tuple[Tuple[float, ...], Tuple[float, ...], Tuple[float, ...]]:
-        positions = []
-        velocities = []
-        accelerations = []
-        t = local_time_s
-        t2 = t * t
-        t3 = t2 * t
-        t4 = t3 * t
-        t5 = t4 * t
-        duration2 = duration_s * duration_s
-        duration3 = duration2 * duration_s
-        duration4 = duration3 * duration_s
-        duration5 = duration4 * duration_s
-        for q0, q1, v0, v1, a0, a1 in zip(
-            first.positions.values,
-            second.positions.values,
-            first.velocities.values,
-            second.velocities.values,
-            first.accelerations.values,
-            second.accelerations.values,
-        ):
-            delta_q = q1 - (q0 + v0 * duration_s + 0.5 * a0 * duration2)
-            delta_v = v1 - (v0 + a0 * duration_s)
-            delta_a = a1 - a0
-            c0 = q0
-            c1 = v0
-            c2 = 0.5 * a0
-            c3 = (
-                10.0 * delta_q - 4.0 * delta_v * duration_s + 0.5 * delta_a * duration2
-            ) / duration3
-            c4 = (
-                -15.0 * delta_q + 7.0 * delta_v * duration_s - delta_a * duration2
-            ) / duration4
-            c5 = (
-                6.0 * delta_q - 3.0 * delta_v * duration_s + 0.5 * delta_a * duration2
-            ) / duration5
-            positions.append(c0 + c1 * t + c2 * t2 + c3 * t3 + c4 * t4 + c5 * t5)
-            velocities.append(
-                c1 + 2.0 * c2 * t + 3.0 * c3 * t2 + 4.0 * c4 * t3 + 5.0 * c5 * t4
-            )
-            accelerations.append(
-                2.0 * c2 + 6.0 * c3 * t + 12.0 * c4 * t2 + 20.0 * c5 * t3
-            )
-        return tuple(positions), tuple(velocities), tuple(accelerations)
 
     @classmethod
     def _validate_trajectory(cls, trajectory: Any) -> None:

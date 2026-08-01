@@ -8,22 +8,24 @@ from myarm_sdk.core import (
     JointMetadata,
     JointMotionLimits,
     JointPositions,
+    JointTrajectoryPlanningRequest,
+    JointTrajectoryPlanningResult,
     TimeScalingPolicy,
-    TrajectoryPlanningRequest,
-    TrajectoryPlanningResult,
     load_sdk_yaml,
 )
 from myarm_sdk.core.validation import require_enabled
-from myarm_sdk.plugin_adapter.trajectory import MinimumJerkJointTrajectoryAdapter
-from myarm_sdk.port_interface import TrajectoryPlannerInterface
+from myarm_sdk.plugin_adapter.trajectory import (
+    MinimumJerkJointTrajectoryPlannerAdapter,
+)
+from myarm_sdk.port_interface import JointTrajectoryPlannerInterface
 
 
-class TrajectoryPlannerService:
+class JointTrajectoryPlannerService:
     """Expose one pure trajectory-planning port to application/ROS callers."""
 
     def __init__(
         self,
-        planner: TrajectoryPlannerInterface,
+        planner: JointTrajectoryPlannerInterface,
         motion_limits: Optional[JointMotionLimits] = None,
         default_time_scaling: Optional[TimeScalingPolicy] = None,
     ) -> None:
@@ -36,14 +38,14 @@ class TrajectoryPlannerService:
         cls,
         service_config: Mapping[str, Any],
         joint_metadata: Sequence[JointMetadata],
-    ) -> TrajectoryPlannerService:
+    ) -> JointTrajectoryPlannerService:
         """Create the configured minimum-jerk planner without ROS imports.
 
         The shared runtime config selects the adapter and this method loads its
         module-local profile.  Joint metadata remains injected from the
         authoritative robot URDF rather than being duplicated in YAML.
         """
-        require_enabled(service_config, "trajectory_planner")
+        require_enabled(service_config, "joint_trajectory_planner")
         if service_config.get("plugin_adapter") != "minimum_jerk_joint":
             raise ValueError(
                 "Only the minimum_jerk_joint trajectory plugin adapter is available"
@@ -75,7 +77,7 @@ class TrajectoryPlannerService:
             sample_period_s=float(adapter_config["sample_period_s"]),
         )
         return cls(
-            planner=MinimumJerkJointTrajectoryAdapter(),
+            planner=MinimumJerkJointTrajectoryPlannerAdapter(),
             motion_limits=motion_limits,
             default_time_scaling=default_time_scaling,
         )
@@ -90,7 +92,9 @@ class TrajectoryPlannerService:
         """Return the service-level policy used by convenience planning calls."""
         return self._default_time_scaling
 
-    def plan(self, request: TrajectoryPlanningRequest) -> TrajectoryPlanningResult:
+    def plan(
+        self, request: JointTrajectoryPlanningRequest
+    ) -> JointTrajectoryPlanningResult:
         """Plan from a caller-owned fresh measured state to a joint goal."""
         return self._planner.plan(request)
 
@@ -100,7 +104,7 @@ class TrajectoryPlannerService:
         q_goal: JointPositions,
         time_scaling: Optional[TimeScalingPolicy] = None,
         motion_limits: Optional[JointMotionLimits] = None,
-    ) -> TrajectoryPlanningResult:
+    ) -> JointTrajectoryPlanningResult:
         """Convenience form for callers that do not need a request object."""
         resolved_motion_limits = motion_limits or self._motion_limits
         if resolved_motion_limits is None:
@@ -108,7 +112,7 @@ class TrajectoryPlannerService:
                 "motion_limits must be supplied when the service is not configured"
             )
         return self.plan(
-            TrajectoryPlanningRequest(
+            JointTrajectoryPlanningRequest(
                 q_start=q_start,
                 q_goal=q_goal,
                 motion_limits=resolved_motion_limits,

@@ -1,5 +1,14 @@
-"""Joint trajectory-planning plugin adapters."""
+"""Joint and Cartesian trajectory-planning plugin adapters."""
 
-from .minimum_jerk_joint_trajectory import MinimumJerkJointTrajectoryAdapter
+from .cartesian_sequential_clik_trajectory_planner import (
+    CartesianSequentialCLIKTrajectoryPlannerAdapter,
+)
 
-__all__ = ["MinimumJerkJointTrajectoryAdapter"]
+from .minimum_jerk_joint_trajectory_planner import (
+    MinimumJerkJointTrajectoryPlannerAdapter,
+)
+
+__all__ = [
+    "CartesianSequentialCLIKTrajectoryPlannerAdapter",
+    "MinimumJerkJointTrajectoryPlannerAdapter",
+]

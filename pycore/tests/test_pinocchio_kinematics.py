@@ -17,11 +17,25 @@ from myarm_sdk.core import (
     Pose,
     load_sdk_yaml,
 )
+from myarm_sdk.core.cartesian_trajectory_planning import (
+    CartesianTrajectoryPlanningRequest,
+    CartesianTrajectoryPolicy,
+    pose_orientation_distance_rad,
+    pose_translation_distance_m,
+)
+from myarm_sdk.core.joint_trajectory_planning import (
+    JointMotionLimits,
+    TimeScalingMode,
+    TimeScalingPolicy,
+)
 from myarm_sdk.plugin_adapter.kinematics import PinocchioKinematicsAdapter
 from myarm_sdk.plugin_adapter.robot_arm.myarm_m750_robot_arm import (
     MyArmM750RobotArm,
 )
 from myarm_sdk.service import KinematicsService
+from myarm_sdk.plugin_adapter.trajectory import (
+    CartesianSequentialCLIKTrajectoryPlannerAdapter,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 URDF_PATH = (
@@ -83,6 +97,37 @@ def test_fk_to_ik_to_fk_converges_from_home_with_residuals_and_limits(adapter):
     assert np.linalg.norm(
         np.asarray(actual_pose.position) - np.asarray(target_pose.position)
     ) <= 0.001
+
+
+def test_fk_to_cartesian_plan_to_fk_uses_the_real_pinocchio_chain(adapter):
+    q_start = HOME
+    q_goal = JointPositions((0.02, -0.34, 0.69, 0.0, -0.34, 0.0))
+    target_pose = adapter.forward(q_goal)
+    policy = CartesianTrajectoryPolicy(
+        ik_policy=_policy(),
+        time_scaling=TimeScalingPolicy(
+            mode=TimeScalingMode.AUTO_LIMITED,
+            sample_period_s=0.05,
+        ),
+    )
+    result = CartesianSequentialCLIKTrajectoryPlannerAdapter(adapter).plan(
+        CartesianTrajectoryPlanningRequest(
+            q_start=q_start,
+            target_pose=target_pose,
+            motion_limits=JointMotionLimits(
+                adapter.joint_metadata,
+                acceleration_limits_rad_s2=(0.5,) * 6,
+            ),
+            policy=policy,
+        )
+    )
+
+    assert result.succeeded is True
+    assert result.trajectory is not None
+    assert result.trajectory.has_derivatives
+    actual_pose = adapter.forward(result.trajectory.points[-1].positions)
+    assert pose_translation_distance_m(actual_pose, target_pose) <= 0.003
+    assert pose_orientation_distance_rad(actual_pose, target_pose) <= 0.05
 
 
 def test_near_limit_target_is_kept_inside_hard_and_software_limits(adapter):

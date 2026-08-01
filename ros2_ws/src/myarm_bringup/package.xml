@@ -12,6 +12,7 @@
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
   <exec_depend>myarm_description</exec_depend>
+  <exec_depend>myarm_cartesian_trajectory</exec_depend>
   <exec_depend>myarm_kinematics</exec_depend>
   <exec_depend>myarm_motion_execution</exec_depend>
   <exec_depend>myarm_robot_driver</exec_depend>

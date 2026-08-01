@@ -1,55 +1,39 @@
-schema_version: 1
+schema_version: 2
 
-# Exactly one owner may publish each child frame. These transforms are
-# application/cell metadata, so they deliberately stay outside robot URDF.
+# Exactly one owner may publish each child frame.  These are fixed cell frames,
+# not robot links; robot/camera frames come from robot_state_publisher/Xacro.
 static_frames:
+  # Leave disabled when a localization system already owns world -> base_link.
   - name: world_to_base
     enabled: true
     parent_frame: world
     child_frame: base_link
     translation_m: [0.0, 0.0, 0.0]
     rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+
   - name: workspace
     enabled: true
     parent_frame: base_link
     child_frame: neugrasp_workspace
+    # Lab placeholder only; replace with the measured cell calibration.
     translation_m: [0.5, 0.0, 0.0]
     rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-  - name: volume
-    enabled: true
-    parent_frame: neugrasp_workspace
-    child_frame: neugrasp_volume
-    translation_m: [-0.15, -0.15, -0.0503]
-    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-  - name: scan_view_00
-    enabled: true
-    parent_frame: neugrasp_workspace
-    child_frame: scan_view_00_optical
-    translation_m: [0.0, 0.0, 0.0]
-    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-  - name: scan_view_01
-    enabled: true
-    parent_frame: neugrasp_workspace
-    child_frame: scan_view_01_optical
-    translation_m: [0.0, 0.0, 0.0]
-    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-  - name: scan_view_02
-    enabled: true
-    parent_frame: neugrasp_workspace
-    child_frame: scan_view_02_optical
-    translation_m: [0.0, 0.0, 0.0]
-    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-  - name: scan_view_03
-    enabled: true
-    parent_frame: neugrasp_workspace
-    child_frame: scan_view_03_optical
-    translation_m: [0.0, 0.0, 0.0]
-    rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
-  # A shoulder/cell camera is external to the robot and belongs here, never
-  # under robot URDF. Enable only with verified calibration.
+
+  # A fixed external camera belongs to the cell, never robot URDF.  Keep it
+  # disabled until a separate verified calibration is supplied.
   - name: shoulder_camera
     enabled: false
     parent_frame: world
     child_frame: shoulder_camera_link
     translation_m: [0.0, 0.0, 0.0]
     rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+
+# `neugrasp_volume` is derived below from bbox.min.  Do not add a second
+# static `volume` transform or the old scan_view_* identity transforms here.
+workspace:
+  frame_id: neugrasp_workspace
+  volume_frame: neugrasp_volume
+  bbox_m:
+    min: [-0.15, -0.15, -0.0503]
+    max: [0.15, 0.15, 0.2497]
+  derive_volume_origin_from_bbox_min: true

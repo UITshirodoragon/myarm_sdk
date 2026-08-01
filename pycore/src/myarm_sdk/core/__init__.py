@@ -1,6 +1,13 @@
 """Stable, ROS-independent value types and utilities for MyArm SDK."""
 
 from .camera_frame import CameraFrame
+from .cartesian_trajectory_planning import (
+    CartesianPathMode,
+    CartesianTrajectoryPlanningFailureReason,
+    CartesianTrajectoryPlanningRequest,
+    CartesianTrajectoryPlanningResult,
+    CartesianTrajectoryPolicy,
+)
 from .configuration import load_sdk_yaml, load_yaml, resolve_sdk_path
 from .ik import (
     IKFailureReason,
@@ -37,19 +44,24 @@ from .robot_arm import (
     RobotArmProtocolError,
     RobotArmState,
 )
-from .trajectory_planning import (
+from .joint_trajectory_planning import (
     JointMotionLimits,
+    JointTrajectoryPlanningFailureReason,
+    JointTrajectoryPlanningRequest,
+    JointTrajectoryPlanningResult,
     TimeScalingMode,
     TimeScalingPolicy,
-    TrajectoryPlanningFailureReason,
-    TrajectoryPlanningRequest,
-    TrajectoryPlanningResult,
 )
 from .trajectory_point import TrajectoryPoint
 from .urdf import load_urdf_joint_metadata
 
 __all__ = [
     "CameraFrame",
+    "CartesianPathMode",
+    "CartesianTrajectoryPlanningFailureReason",
+    "CartesianTrajectoryPlanningRequest",
+    "CartesianTrajectoryPlanningResult",
+    "CartesianTrajectoryPolicy",
     "GripperCommand",
     "GripperState",
     "IKFailureReason",
@@ -64,6 +76,9 @@ __all__ = [
     "JointMotionLimits",
     "JointPositions",
     "JointTrajectory",
+    "JointTrajectoryPlanningFailureReason",
+    "JointTrajectoryPlanningRequest",
+    "JointTrajectoryPlanningResult",
     "MotionExecutionEvent",
     "MotionExecutionFailureReason",
     "MotionExecutionPolicy",
@@ -82,9 +97,6 @@ __all__ = [
     "SingularityMetrics",
     "TimeScalingMode",
     "TimeScalingPolicy",
-    "TrajectoryPlanningFailureReason",
-    "TrajectoryPlanningRequest",
-    "TrajectoryPlanningResult",
     "TrajectoryPoint",
     "load_sdk_yaml",
     "load_urdf_joint_metadata",

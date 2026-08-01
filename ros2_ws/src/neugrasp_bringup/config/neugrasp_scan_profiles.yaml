@@ -1,0 +1,44 @@
+schema_version: 1
+
+# Frame IDs are contracts, not launch namespaces.  `tool0` remains the control
+# TCP while camera targets are generated in the optical frame.
+frames:
+  base: base_link
+  workspace: neugrasp_workspace
+  tool: tool0
+  camera_optical: wrist_camera_optical_frame
+
+execution:
+  # Each phase is sequential and repeated; this is a visual/fake-arm settle
+  # delay rather than a physical camera exposure guarantee.
+  settle_time_s: 0.25
+
+trajectory:
+  active_profile: paper_phi180
+
+  spherical_convention:
+    reference_frame: neugrasp_workspace
+    azimuth_zero_axis: +x
+    azimuth_positive_direction: clockwise_about_positive_z
+    polar_zero_axis: +z
+    angle_unit: degree
+
+  profiles:
+    # A deterministic SDK benchmark/profile.  It is intentionally not claimed
+    # to be a hardware-certified version of the NeuGrasp paper trajectory.
+    paper_phi180:
+      type: paper_spiral
+      profile_version: 1
+      source_view_ids: [0, 1, 2, 3]
+      radius_m: [0.45, 0.45, 0.45, 0.45]
+      polar_deg: [15.0, 17.5, 20.0, 22.5]
+      azimuth_deg: [150.0, 170.0, 190.0, 210.0]
+      look_at_m: [0.0, 0.0, 0.0]
+      capture_order: [0, 1, 2, 3]
+      model_input_order: [0, 1, 2, 3]
+      query_view_key: view_01
+      settle_time_s: 0.25
+
+    # Explicit poses are useful for a later calibrated/reachable profile.
+    # Keep this empty profile disabled by omission rather than copying old
+    # `T_eef_camera`/legacy view conventions into a live command source.

@@ -1,0 +1,34 @@
+# Offline Cartesian-to-joint planning.  This profile deliberately reuses the
+# joint minimum-jerk profile as the single source of acceleration limits; the
+# selected Pinocchio kinematics profile remains the source of URDF, frames,
+# joint order and IK solver/damping settings.
+plugin_adapter: cartesian_sequential_clik
+
+joint_motion_limits_config: plugin_adapter/trajectory/config/minimum_jerk_joint_trajectory_planner.yaml
+
+path:
+  # linear_translation_slerp keeps TCP XYZ straight.  se3_geodesic is a screw
+  # path and must be selected deliberately when that geometry is intended.
+  mode: linear_translation_slerp
+  max_translation_step_m: 0.01
+  max_rotation_step_rad: 0.08
+  max_waypoints: 200
+  # Reject a discontinuous IK branch instead of accepting a sudden jump.
+  maximum_joint_step_rad: 0.35
+
+time_scaling:
+  # auto_limited | requested_duration_stretch | requested_duration_strict |
+  # speed_scale.  The planner always stretches a non-strict duration when
+  # dense q/qdot/qddot validation requires it.
+  mode: requested_duration_stretch
+  sample_period_s: 0.2
+  # requested_duration_s: 3.0
+  # speed_scale: 0.5
+
+validation:
+  # This is an offline validation resolution, independent of the ROS status
+  # timer. It must be no coarser than actual executor interpolation checks.
+  dense_sample_period_s: 0.02
+  position_tolerance_m: 0.003
+  orientation_tolerance_rad: 0.05
+  max_duration_stretch_iterations: 8

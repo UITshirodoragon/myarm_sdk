@@ -1,0 +1,25 @@
+# Execute one named NeuGrasp scan profile.  The scan coordinator is an
+# application-level action client; it submits each camera view sequentially to
+# the existing fake-only FollowCartesianTrajectory executor.
+string profile_id
+bool execute_motion
+bool capture_enabled
+# A negative value selects the profile default.
+float64 settle_time_s
+---
+bool succeeded
+string failure_reason
+string detail
+uint32 completed_view_count
+string[] completed_view_keys
+geometry_msgs/PoseArray planned_camera_poses
+geometry_msgs/PoseArray measured_camera_poses
+---
+string view_key
+uint32 capture_index
+uint32 view_count
+string stage
+float32 progress
+geometry_msgs/PoseStamped planned_camera_pose
+geometry_msgs/PoseStamped planned_tool_pose
+geometry_msgs/PoseStamped measured_camera_pose

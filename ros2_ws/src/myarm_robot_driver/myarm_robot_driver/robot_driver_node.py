@@ -35,9 +35,14 @@ class MyArmRobotDriverNode(Node):
 
     def __init__(self, robot_arm_service: Optional[Any] = None) -> None:
         super().__init__("myarm_robot_driver")
-        services_config = load_sdk_yaml(self._SERVICES_CONFIG)
+        self.declare_parameter("services_config", self._SERVICES_CONFIG)
+        self.declare_parameter("required_robot_arm_plugin_adapter", "")
+        services_config = load_sdk_yaml(
+            str(self.get_parameter("services_config").value)
+        )
         self._robot_config = self._mapping(services_config.get("robot"), "robot")
         self._service_config = self._robot_arm_config(services_config)
+        self._require_robot_arm_plugin_adapter()
         self._topics = self._mapping(self._service_config.get("topics"), "robot topics")
 
         self._service = robot_arm_service or RobotArmService.from_config(
@@ -136,6 +141,22 @@ class MyArmRobotDriverNode(Node):
         if not isinstance(value, dict):
             raise TypeError(f"{name} must be a mapping")
         return value
+
+    def _require_robot_arm_plugin_adapter(self) -> None:
+        """Fail closed when a launch is explicitly restricted to a backend."""
+        expected = str(
+            self.get_parameter("required_robot_arm_plugin_adapter").value
+        ).strip()
+        if not expected:
+            return
+        actual = self._service_config.get("plugin_adapter")
+        if actual != expected:
+            raise RuntimeError(
+                "This launch requires services.robot_arm.plugin_adapter={!r}, "
+                "but the loaded runtime config selects {!r}".format(
+                    expected, actual
+                )
+            )
 
     @classmethod
     def _robot_arm_config(cls, services_config: Mapping[str, Any]) -> Mapping[str, Any]:

@@ -22,7 +22,10 @@ class MyArmKinematicsNode(Node):
 
     def __init__(self) -> None:
         super().__init__("myarm_kinematics")
-        services_config = load_sdk_yaml(self._SERVICES_CONFIG)
+        self.declare_parameter("services_config", self._SERVICES_CONFIG)
+        services_config = load_sdk_yaml(
+            str(self.get_parameter("services_config").value)
+        )
         self._service_config = self._kinematics_config(services_config)
         self._robot_config = self._mapping(services_config.get("robot"), "robot")
         self._topics = self._mapping(self._service_config["topics"], "kinematics topics")

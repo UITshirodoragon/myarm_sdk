@@ -1,0 +1,51 @@
+# Plan a collision-unaware Cartesian TCP path. A zero requested_duration with
+# TIME_DEFAULT keeps the configured timing policy. This action plans and
+# publishes a preview only; it never commands a robot driver.
+geometry_msgs/PoseStamped target_pose
+builtin_interfaces/Duration requested_duration
+
+# CartesianPathMode. PATH_DEFAULT retains the selected Cartesian adapter
+# profile, so an otherwise minimal goal never bypasses runtime YAML.
+uint8 PATH_DEFAULT=0
+uint8 PATH_LINEAR_TRANSLATION_SLERP=1
+uint8 PATH_SE3_GEODESIC=2
+uint8 path_mode
+
+# IKTaskMode. TASK_DEFAULT likewise preserves the configured IK policy.
+uint8 TASK_DEFAULT=0
+uint8 TASK_FULL_POSE=1
+uint8 TASK_POSITION_ONLY=2
+uint8 task_mode
+
+# TimeScalingMode. TIME_DEFAULT retains the selected Cartesian adapter profile;
+# it is the zero-value so a minimal action goal does not silently override YAML.
+# The planner may stretch an infeasible requested duration unless strict is set.
+uint8 TIME_DEFAULT=0
+uint8 TIME_AUTO_LIMITED=1
+uint8 TIME_REQUESTED_DURATION_STRETCH=2
+uint8 TIME_REQUESTED_DURATION_STRICT=3
+uint8 TIME_SPEED_SCALE=4
+uint8 time_scaling_mode
+float64 speed_scale
+
+# Non-positive values select the configured adapter defaults.
+float64 max_translation_step_m
+float64 max_rotation_step_rad
+---
+# A failure result always has succeeded=false and an empty trajectory.
+bool succeeded
+trajectory_msgs/JointTrajectory trajectory
+string failure_reason
+string detail
+# UINT32_MAX means that the failure was not tied to one reference waypoint.
+uint32 failed_waypoint_index
+float64 resolved_duration_s
+float64 minimum_joint_limit_margin_rad
+float64 minimum_singular_value
+float64 maximum_position_residual_m
+float64 maximum_orientation_residual_rad
+---
+uint32 waypoint_index
+uint32 waypoint_count
+float32 progress
+string stage

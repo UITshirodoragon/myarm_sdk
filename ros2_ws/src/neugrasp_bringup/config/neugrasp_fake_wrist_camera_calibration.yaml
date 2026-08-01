@@ -1,0 +1,21 @@
+# Explicit fake-only camera profile for the NeuGrasp scan launch.
+# It is deliberately separate from the hardware calibration template.  Never
+# use it for a physical robot or copy it into a real calibration record.
+schema_version: 1
+calibration_id: "fake_wrist_camera_v1"
+calibration_sha256: "not-applicable-fake-profile"
+status: "FAKE"
+
+parent_frame: "gripper_base_link"
+camera_body_frame: "wrist_camera_link"
+camera_optical_frame: "wrist_camera_optical_frame"
+
+# A non-zero named simulation mount makes the camera/tool conversion visible in
+# TF without pretending to describe an installed physical bracket.
+mount:
+  translation_m: [0.020, 0.000, 0.040]
+  rpy_rad: [0.0, 0.0, 0.0]
+
+camera_body:
+  translation_m: [0.000, 0.000, 0.000]
+  rpy_rad: [0.0, 0.0, 0.0]

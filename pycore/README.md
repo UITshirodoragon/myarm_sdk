@@ -9,7 +9,8 @@ ROS node → service → port_interface → plugin_adapter
 ```
 
 `service/config/services.yaml` là service manifest duy nhất: nó bật/tắt
-camera, robot arm, kinematics, trajectory planner và motion execution. Cấu
+camera, robot arm, kinematics, joint/cartesian trajectory planner và motion
+execution. Cấu
 hình chi tiết của hardware instance hoặc backend nằm cạnh từng plugin adapter.
 
 Package có thể được cài trực tiếp từ thư mục `pycore`:
@@ -54,11 +55,12 @@ khi trả `JointPositions` cho Pinocchio.
 ## Interfaces, adapters và services
 
 Các contract là `CameraInterface`, `KinematicsInterface`, `RobotArmInterface`,
-`TrajectoryPlannerInterface` và `MotionExecutionInterface` trong
+`JointTrajectoryPlannerInterface`, `CartesianTrajectoryPlannerInterface` và
+`MotionExecutionInterface` trong
 `myarm_sdk.port_interface`. Pinocchio, OpenCV, pymycobot, minimum-jerk planner
 và monotonic-time executor nằm trong `myarm_sdk.plugin_adapter`. Node chỉ dùng
-service phù hợp, ví dụ `KinematicsService`, `TrajectoryPlannerService` hoặc
-`MotionExecutionService`.
+service phù hợp, ví dụ `KinematicsService`, `JointTrajectoryPlannerService`,
+`CartesianTrajectoryPlannerService` hoặc `MotionExecutionService`.
 
 ```python
 from myarm_sdk.core import JointPositions
@@ -90,11 +92,11 @@ driver accepts only the executor's internal setpoint stream.
 
 ## Joint trajectory và motion execution
 
-`MinimumJerkJointTrajectoryAdapter` implements a synchronized quintic
+`MinimumJerkJointTrajectoryPlannerAdapter` implements a synchronized quintic
 minimum-jerk point-to-point profile. Its output is a validated
 `JointTrajectory` with `q`, `qdot`, `qddot` and strictly increasing timestamps.
 Position/velocity limits come from URDF; per-joint acceleration limits belong
-to `plugin_adapter/trajectory/config/minimum_jerk_joint_trajectory.yaml`.
+to `plugin_adapter/trajectory/config/minimum_jerk_joint_trajectory_planner.yaml`.
 
 `TimeScalingPolicy` supports `auto_limited`, `requested_duration_stretch`,
 `requested_duration_strict` and `speed_scale`. A profile that cannot satisfy
@@ -106,3 +108,24 @@ trajectory using a monotonic clock, returns desired setpoints and reports
 execution state, timing lag, tracking error and terminal timeout. The ROS node
 publishes those setpoints to the robot driver; it does not create a second
 robot adapter or serial connection.
+
+## Cartesian trajectory planning
+
+`CartesianSequentialCLIKTrajectoryPlannerAdapter` là planner riêng, không thay
+thế `MinimumJerkJointTrajectoryPlannerAdapter`. Nó nhận `q_start` measured mới,
+tạo reference TCP theo minimum-jerk progress, rồi giải Pinocchio IK tuần tự với
+nghiệm waypoint trước làm seed. Kết quả `JointTrajectory` có đủ `q`, `qdot`,
+`qddot` và được dense-validate bằng chính polynomial sampler của executor.
+
+Profile của nó là
+`plugin_adapter/trajectory/config/cartesian_sequential_clik_trajectory_planner.yaml`.
+Profile chọn `linear_translation_slerp` (XYZ thẳng) hoặc `se3_geodesic`, mật độ
+sampling, branch-jump rejection, timing và FK/joint-limit validation. Pinocchio
+profile vẫn là nguồn duy nhất của URDF, base/tool frame, joint order, hard limit
+và IK policy.
+
+Mọi failure là atomic: unreachable, joint-limit margin, singularity, branch
+discontinuity, timing hoặc dense-FK validation đều trả về **không có
+trajectory**. `POSITION_ONLY` chỉ validate position, nhưng orientation residual
+vẫn được report. Chưa có collision checking, vì vậy Cartesian service ở phase
+này chỉ plan/preview và không có robot-transport API.

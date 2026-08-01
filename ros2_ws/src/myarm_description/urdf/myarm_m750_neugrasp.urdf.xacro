@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!--
+  NeuGrasp robot-description profile.
+
+  This is intentionally an application wrapper, not a replacement for
+  myarm_m750_poe_v3_2.urdf.  The plain v3.2 URDF remains the canonical input
+  for pycore, Pinocchio and planning.  This profile can add only the fixed
+  camera subtree needed by NeuGrasp.
+
+  The four transform arguments describe:
+
+    gripper_base_link -> wrist_camera_mount_link : mount_xyz / mount_rpy
+    wrist_camera_mount_link -> wrist_camera_link : camera_xyz / camera_rpy
+
+  wrist_camera_link -> wrist_camera_optical_frame is defined by the camera
+  macro using the ROS optical-frame convention.  A launch layer must read and
+  validate a named calibration file before passing these values.  In
+  particular, do not enable the camera with these zero defaults on hardware.
+
+  Application scene frames (workspace, volume, scan targets, selected grasp)
+  must not be added here: they belong to their runtime owners, not robot TF.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="myarm_m750">
+  <xacro:arg name="use_wrist_camera" default="false"/>
+  <!-- Compatibility names shared with myarm_m750_application.urdf.xacro. -->
+  <xacro:arg name="wrist_camera_mount_xyz" default="0 0 0"/>
+  <xacro:arg name="wrist_camera_mount_rpy" default="0 0 0"/>
+  <xacro:arg name="wrist_camera_xyz" default="0 0 0"/>
+  <xacro:arg name="wrist_camera_rpy" default="0 0 0"/>
+
+  <!-- Keep the canonical kinematic source as a plain URDF. -->
+  <xacro:include filename="myarm_m750_poe_v3_2.urdf"/>
+  <xacro:include filename="xacro/sensors/wrist_camera.xacro"/>
+
+  <xacro:if value="$(arg use_wrist_camera)">
+    <xacro:myarm_neugrasp_wrist_camera
+      mount_xyz="$(arg wrist_camera_mount_xyz)"
+      mount_rpy="$(arg wrist_camera_mount_rpy)"
+      camera_xyz="$(arg wrist_camera_xyz)"
+      camera_rpy="$(arg wrist_camera_rpy)"/>
+  </xacro:if>
+</robot>
