@@ -22,7 +22,7 @@ ros2 launch neugrasp_bringup neugrasp_system.launch.py \
 Remote viewer only (Host PC):
 
 ```bash
-ros2 launch neugrasp_bringup neugrasp_rviz_remote.launch.py
+ros2 launch myarm_rviz2 neugrasp_rviz_remote.launch.py
 ```
 
 The remote launch intentionally starts no `robot_state_publisher`; it consumes

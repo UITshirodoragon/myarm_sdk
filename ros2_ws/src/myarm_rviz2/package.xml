@@ -2,7 +2,7 @@
 <package format="3">
   <name>myarm_rviz2</name>
   <version>0.0.1</version>
-  <description>RViz2 configuration for MyArm M750.</description>
+  <description>RViz2 configurations and remote-view launches for MyArm applications.</description>
   <maintainer email="maintainer@example.com">myarm_sdk maintainers</maintainer>
   <license>MIT</license>
   <buildtool_depend>ament_python</buildtool_depend>

@@ -8,7 +8,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    config = Path(get_package_share_directory("neugrasp_bringup")) / "config" / "neugrasp.rviz"
+    config = Path(get_package_share_directory("myarm_rviz2")) / "config" / "neugrasp.rviz"
     return LaunchDescription([
         Node(
             package="rviz2",

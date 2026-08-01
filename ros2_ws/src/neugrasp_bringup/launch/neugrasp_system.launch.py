@@ -21,7 +21,6 @@ def generate_launch_description():
     enable_kinematics = LaunchConfiguration("enable_kinematics")
     enable_motion_execution = LaunchConfiguration("enable_motion_execution")
     enable_scene_frames = LaunchConfiguration("enable_scene_frames")
-    enable_rviz = LaunchConfiguration("enable_rviz")
     use_wrist_camera = LaunchConfiguration("use_wrist_camera")
     wrist_camera_mount_xyz = LaunchConfiguration("wrist_camera_mount_xyz")
     wrist_camera_mount_rpy = LaunchConfiguration("wrist_camera_mount_rpy")
@@ -48,7 +47,6 @@ def generate_launch_description():
         DeclareLaunchArgument("enable_kinematics", default_value="true"),
         DeclareLaunchArgument("enable_motion_execution", default_value="true"),
         DeclareLaunchArgument("enable_scene_frames", default_value="true"),
-        DeclareLaunchArgument("enable_rviz", default_value="false"),
         DeclareLaunchArgument("use_wrist_camera", default_value="false"),
         DeclareLaunchArgument("wrist_camera_mount_xyz", default_value="0 0 0"),
         DeclareLaunchArgument("wrist_camera_mount_rpy", default_value="0 0 0"),
@@ -83,13 +81,6 @@ def generate_launch_description():
             name="neugrasp_static_scene_frames",
             parameters=[{"scene_config": scene_config}],
             condition=IfCondition(enable_scene_frames),
-            output="screen",
-        ),
-        Node(
-            package="rviz2",
-            executable="rviz2",
-            arguments=["-d", str(neugrasp_share / "config" / "neugrasp.rviz")],
-            condition=IfCondition(enable_rviz),
             output="screen",
         ),
     ])
