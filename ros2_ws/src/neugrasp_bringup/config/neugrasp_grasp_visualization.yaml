@@ -1,0 +1,16 @@
+schema_version: 1
+
+# Current NeuGrasp predicted-grasp -> TCP convention.  This is deliberately
+# owned by bringup, not copied from a replay run.  Verify against the physical
+# gripper before using a selected pose for motion.
+grasp_tcp:
+  translation_m: [0.0, 0.0, 0.0]
+  rotation_xyzw: [0.0, 0.0, 1.0, 0.0]
+
+# A visualization-only parallel-jaw model used by RViz LINE_LIST markers.
+# `max_opening_m` is the measured MyArm physical opening limit.
+wireframe:
+  finger_length_m: 0.050
+  finger_height_m: 0.025
+  min_opening_m: 0.005
+  max_opening_m: 0.080

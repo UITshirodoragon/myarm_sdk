@@ -312,9 +312,12 @@ needed by RViz:
 
 ```text
 inference/tsdf_vol.npy                         local TSDF tensor
+inference/qual_vol_raw.npy                     raw model grasp-quality tensor
+inference/width_vol_raw.npy                    raw model opening-width tensor
 inference/candidates.json                      postprocessed grasps
 inference/selected_grasp.json                  selected postprocessed grasp
-visualizations/tsdf_near_surface_base.ply      optional cloud fallback/source
+visualizations/tsdf_near_surface_base.ply      legacy TSDF diagnostic
+visualizations/grasp_candidates_wireframes_base.ply  legacy gripper diagnostic
 ```
 
 It does not read or publish `calibration`, TF snapshots, scan metadata,
@@ -330,11 +333,12 @@ ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
 Append `start_rviz:=true` to use the supplied NeuGrasp RViz profile. Its TSDF
 display is intentionally `Boxes`, not `Points`.
 
-The default `cloud_source:=auto` reconstructs a near-surface `PointCloud2`
-from `tsdf_vol.npy` and publishes it in the **current** local volume frame:
+Replay reconstructs near-surface `PointCloud2` messages from `tsdf_vol.npy`
+and publishes canonical products in the **current** local volume frame:
 
 ```text
 /neugrasp/tsdf_cloud                PointCloud2, header.frame_id=neugrasp_volume
+/neugrasp/grasp_quality_raw_cloud   PointCloud2, header.frame_id=neugrasp_volume
 /neugrasp/grasp_candidates          MarkerArray, header.frame_id=neugrasp_volume
 /neugrasp/selected_grasp            PoseStamped, header.frame_id=neugrasp_volume
 /neugrasp/selected_grasp_marker     Marker, header.frame_id=neugrasp_volume
@@ -353,21 +357,32 @@ boxes occupy exactly `[0, 0.30]³` in `neugrasp_volume`. If either the scene
 bbox or tensor resolution changes, update the RViz box size to
 `bbox_edge_m / resolution` before visual inspection.
 
-If `tsdf_vol.npy` is absent or unsuitable, `auto` falls back to the legacy PLY.
-The PLY stores points in `base_link`; replay waits for the **current** TF
-`neugrasp_volume <- base_link`, converts the points once, then still publishes
-the cloud in `neugrasp_volume`. To force that source:
+The canonical TSDF display uses `Color Transformer: Intensity` and channel
+`tsdf` fixed to `[-0.2, 0.2]`; it does not use an artificial RGB colormap.
+The optional raw-quality display uses channel `quality`, range `[0,1]`, and is
+disabled by default. It is a debugging product, not the postprocessed score
+used to choose a grasp. `rot_vol_raw.npy` is not visualized because its raw
+quaternion-channel convention is not a ROS contract.
+
+Candidate markers use only `pose_cube_grasp`, then compose it with the current
+`grasp_tcp` transform in `neugrasp_grasp_visualization.yaml`. The same file
+defines the RViz-only parallel-jaw wireframe and clamps every opening to the
+measured MyArm limit `max_opening_m: 0.080`. The selected marker is orange;
+candidate colour represents score. Do not substitute historical
+`pose_table_grasp`, `pose_base_grasp`, or `pose_base_tcp`.
+
+The two PLY files publish separately as diagnostics:
 
 ```bash
-ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
-  run_dir:=/path/to/run cloud_source:=ply \
-  scene_config:=/path/to/current_scene.yaml
+/neugrasp/legacy_tsdf_ply_cloud
+/neugrasp/legacy_grasp_wireframes
 ```
 
-This PLY path assumes the recorded `base_link` coordinate contract is still
-meaningful for the current robot cell. It uses current TF only; it never reads
-or publishes a historical scene TF. `/neugrasp/replay/status` reports the
-selected source and whether PLY is waiting for current TF.
+Their input coordinates are historical `base_link`; replay waits for current
+`neugrasp_volume <- base_link` TF before publishing. RViz keeps both displays
+off by default. They support comparison only and never replace the canonical
+JSON-based candidate markers. `/neugrasp/replay/status` reports whether they
+are waiting for current TF.
 
 To include the current wrist-camera Xacro profile in that TF tree, opt in with
 the current named calibration (never a YAML copied from `run_dir`):
@@ -392,10 +407,12 @@ to the motion executor without a fresh reachability/IK and safety validation.
 /neugrasp/planned_camera_poses
 /neugrasp/measured_camera_poses
 /neugrasp/tsdf_cloud
-/neugrasp/quality_cloud
+/neugrasp/grasp_quality_raw_cloud
 /neugrasp/grasp_candidates
 /neugrasp/selected_grasp
 /neugrasp/selected_grasp_marker
+/neugrasp/legacy_tsdf_ply_cloud
+/neugrasp/legacy_grasp_wireframes
 ```
 
 The workflow repeats small, sequential phases. Replay cloud and marker

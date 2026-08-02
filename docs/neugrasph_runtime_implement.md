@@ -881,10 +881,23 @@ x         float32
 y         float32
 z         float32
 tsdf      float32
-quality   float32, optional
-width_m   float32, optional
-rgb       uint32, optional
 ```
+
+Canonical TSDF cloud dùng `Color Transformer: Intensity`, channel `tsdf`, với
+range cố định theo ngưỡng near-surface (hiện tại `[-0.2, 0.2]`). Không dùng
+`RGB8` mặc định vì RGB chỉ là colormap tạo thêm, không phải giá trị TSDF.
+
+Raw quality là cloud riêng `/neugrasp/grasp_quality_raw_cloud`, fields:
+
+```text
+x, y, z    float32
+tsdf       float32
+quality    float32
+width_vox  float32
+```
+
+Cloud này chỉ lấy voxel near-surface có quality vượt preview threshold và phải
+được ghi rõ là **raw model quality**, không phải candidate score sau postprocess.
 
 ROS 2 cung cấp `PointCloud2` trong `sensor_msgs` để biểu diễn point-cloud dạng binary có layout mô tả bởi `PointField`. ([ROS 2 Documentation][5])
 
@@ -923,12 +936,12 @@ thêm nửa voxel current-volume sau phép đổi để box RViz vẫn nằm t�
 
 Đây là edge graph, không phải point cloud.
 
-Nên chuyển thành:
+Nên chuyển thành diagnostic riêng:
 
 ```text
 visualization_msgs/Marker
 type = LINE_LIST
-frame_id = base_link
+frame_id = neugrasp_volume  # sau current T_volume_base
 ```
 
 Mỗi edge `(a,b)` tạo hai phần tử liên tiếp:
@@ -940,7 +953,7 @@ points[2k+1] = vertex[b]
 
 RViz `LINE_LIST` nối các cặp điểm `0–1`, `2–3`, `4–5` theo đúng cấu trúc này. ([ROS Documentation][6])
 
-Tuy nhiên source tốt hơn là:
+Tuy nhiên source canonical tốt hơn là:
 
 ```text
 candidates.json
@@ -953,6 +966,11 @@ vì PLY đã làm mất:
 * width;
 * pose cube/table/base;
 * selected state.
+
+Canonical marker dùng `pose_cube_grasp` rồi compose với `T_grasp_tcp` trong
+config hiện hành. Geometry parallel-jaw là `LINE_LIST` và phải clamp theo độ mở
+thực tế của MyArm: `max_opening_m = 0.080`. Không dùng `pose_base_grasp` hay
+`pose_base_tcp` trong run để tạo marker canonical.
 
 Visualization node nên tạo:
 
@@ -1015,7 +1033,7 @@ Marker batch như `CUBE_LIST` hoặc `LINE_LIST` hiệu quả hơn tạo hàng n
 /neugrasp/tsdf_cloud
     sensor_msgs/PointCloud2
 
-/neugrasp/quality_cloud
+/neugrasp/grasp_quality_raw_cloud
     sensor_msgs/PointCloud2
 
 /neugrasp/grasp_candidates
@@ -1024,8 +1042,14 @@ Marker batch như `CUBE_LIST` hoặc `LINE_LIST` hiệu quả hơn tạo hàng n
 /neugrasp/selected_grasp
     geometry_msgs/PoseStamped
 
+/neugrasp/legacy_tsdf_ply_cloud
+    sensor_msgs/PointCloud2  # diagnostic, RViz disabled by default
+
+/neugrasp/legacy_grasp_wireframes
+    visualization_msgs/MarkerArray  # diagnostic, RViz disabled by default
+
 /neugrasp/replay/status
-    myarm_m750_msgs/NeuGraspReplayStatus
+    std_msgs/String
 ```
 
 Metadata mỗi view phải giữ:

@@ -12,14 +12,14 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    """Start artifact-only replay with the current robot and scene TF."""
+    """Start TSDF, grasp and diagnostic replay with current robot/scene TF."""
     share = Path(get_package_share_directory("neugrasp_bringup"))
     rviz_share = Path(get_package_share_directory("myarm_rviz2"))
     run_dir = LaunchConfiguration("run_dir")
     scene_config = LaunchConfiguration("scene_config")
     enable_scene_frames = LaunchConfiguration("enable_scene_frames")
-    cloud_source = LaunchConfiguration("cloud_source")
     voxel_resolution = LaunchConfiguration("voxel_resolution")
+    grasp_visualization_config = LaunchConfiguration("grasp_visualization_config")
     use_wrist_camera = LaunchConfiguration("use_wrist_camera")
     camera_calibration = LaunchConfiguration("camera_calibration")
     start_rviz = LaunchConfiguration("start_rviz")
@@ -29,14 +29,14 @@ def generate_launch_description():
             "scene_config", default_value=str(share / "config" / "neugrasp_scene.yaml")
         ),
         DeclareLaunchArgument(
-            "cloud_source",
-            default_value="auto",
-            description="Replay cloud source: auto (TSDF then PLY), tsdf, or ply.",
-        ),
-        DeclareLaunchArgument(
             "voxel_resolution",
             default_value="40",
             description="Cubic voxel resolution for legacy PLY centering; must match its export.",
+        ),
+        DeclareLaunchArgument(
+            "grasp_visualization_config",
+            default_value=str(share / "config" / "neugrasp_grasp_visualization.yaml"),
+            description="Current grasp-to-TCP convention and RViz wireframe geometry.",
         ),
         DeclareLaunchArgument(
             "enable_scene_frames",
@@ -81,8 +81,8 @@ def generate_launch_description():
             parameters=[{
                 "run_dir": run_dir,
                 "scene_config": scene_config,
-                "cloud_source": cloud_source,
                 "voxel_resolution": voxel_resolution,
+                "grasp_visualization_config": grasp_visualization_config,
             }],
             output="screen",
         ),

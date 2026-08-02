@@ -9,6 +9,7 @@ Panels:
         - /RobotModel1
         - /Neugrasp Scene1
         - /TSDF Voxels (7.5 mm)1
+        - /Raw Grasp Quality Voxels1
         - /Grasp Candidates (volume)1
         - /Scan Views1
       Splitter Ratio: 0.5
@@ -193,7 +194,7 @@ Visualization Manager:
       Channel Name: tsdf
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: RGB8
+      Color Transformer: Intensity
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
@@ -213,33 +214,35 @@ Visualization Manager:
       Use Fixed Frame: true
       Value: true
 
-    - Alpha: 0.60
-      Autocompute Intensity Bounds: true
+    # This is raw model quality, not the postprocessed candidate score.  It is
+    # intentionally off by default; enable it to inspect why proposals emerge.
+    - Alpha: 0.45
+      Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
-        Value: true
+        Max Value: 1
+        Min Value: 0
+        Value: false
       Axis: Z
-      Channel Name: intensity
+      Channel Name: quality
       Class: rviz_default_plugins/PointCloud2
-      Color: 255; 80; 80
+      Color: 255; 255; 255
       Color Transformer: Intensity
       Decay Time: 0
       Enabled: false
       Invert Rainbow: false
-      Name: Quality Cloud
+      Name: Raw Grasp Quality Voxels
       Position Transformer: XYZ
       Queue Size: 3
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.005
-      Style: Points
+      Size (m): 0.0075
+      Style: Boxes
       Topic:
-        Depth: 3
-        Durability Policy: Volatile
+        Depth: 1
+        Durability Policy: Transient Local
         History Policy: Keep Last
-        Reliability Policy: Best Effort
-        Value: /neugrasp/quality_cloud
+        Reliability Policy: Reliable
+        Value: /neugrasp/grasp_quality_raw_cloud
       Use Fixed Frame: true
       Value: true
 
@@ -249,6 +252,48 @@ Visualization Manager:
       Enabled: true
       Marker Topic: /neugrasp/grasp_candidates
       Name: Grasp Candidates (volume)
+      Namespaces:
+        {}
+      Queue Size: 20
+      Value: true
+
+    # Optional diagnostic products exported by the old runtime.  They are
+    # transformed through current neugrasp_volume <- base_link TF, but remain
+    # disabled so they cannot be confused with canonical JSON-based grasps.
+    - Alpha: 0.55
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: rgb
+      Class: rviz_default_plugins/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: RGB8
+      Decay Time: 0
+      Enabled: false
+      Invert Rainbow: false
+      Name: Legacy TSDF PLY (diagnostic)
+      Position Transformer: XYZ
+      Queue Size: 3
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.0075
+      Style: Boxes
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /neugrasp/legacy_tsdf_ply_cloud
+      Use Fixed Frame: true
+      Value: true
+
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Marker Topic: /neugrasp/legacy_grasp_wireframes
+      Name: Legacy Gripper PLY (diagnostic)
       Namespaces:
         {}
       Queue Size: 20
