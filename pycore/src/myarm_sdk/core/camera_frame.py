@@ -11,3 +11,7 @@ class CameraFrame:
     data: Any
     timestamp_s: float
     encoding: str = "bgr8"
+    sequence: int = 0
+    width: int = 0
+    height: int = 0
+    optical_frame: str = ""

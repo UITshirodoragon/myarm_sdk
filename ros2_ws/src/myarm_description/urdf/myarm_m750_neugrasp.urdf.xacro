@@ -13,7 +13,7 @@
     wrist_camera_mount_link -> wrist_camera_link : camera_xyz / camera_rpy
     wrist_camera_link -> wrist_camera_optical_frame : optical_xyz / optical_rpy
 
-  ``logitech_c925_wrist_v1`` instead selects a named model profile: its
+  ``logitech_c925e_wrist_v1`` instead selects a named model profile: its
   bracket, body offset and body->optical transform are fixed in separate
   Xacro files.  A launch layer accepts only a known profile from a named
   calibration record.  In particular, do not enable the generic profile with
@@ -37,8 +37,8 @@
   <!-- Keep the canonical kinematic source as a plain URDF. -->
   <xacro:include filename="myarm_m750_poe_v3_2.urdf"/>
   <xacro:include filename="xacro/sensors/wrist_camera.xacro"/>
-  <xacro:include filename="xacro/sensors/mounts/logitech_c925_wrist_mount.xacro"/>
-  <xacro:include filename="xacro/sensors/profiles/logitech_c925_wrist_camera.xacro"/>
+  <xacro:include filename="xacro/sensors/mounts/logitech_c925e_wrist_mount.xacro"/>
+  <xacro:include filename="xacro/sensors/profiles/logitech_c925e_wrist_camera.xacro"/>
 
   <xacro:if value="$(arg use_wrist_camera)">
     <xacro:if value="${camera_profile == 'generic'}">
@@ -50,8 +50,8 @@
         optical_xyz="$(arg wrist_camera_optical_xyz)"
         optical_rpy="$(arg wrist_camera_optical_rpy)"/>
     </xacro:if>
-    <xacro:if value="${camera_profile == 'logitech_c925_wrist_v1'}">
-      <xacro:myarm_neugrasp_logitech_c925_wrist_camera/>
+    <xacro:if value="${camera_profile == 'logitech_c925e_wrist_v1'}">
+      <xacro:myarm_logitech_c925e_wrist_camera/>
     </xacro:if>
   </xacro:if>
 </robot>

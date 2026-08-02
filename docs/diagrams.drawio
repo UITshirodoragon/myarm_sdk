@@ -13,7 +13,7 @@
                 <mxCell id="5" value="" style="rounded=0;whiteSpace=wrap;html=1;dashed=1;" vertex="1" parent="1">
                     <mxGeometry x="30" y="390" width="610" height="60" as="geometry"/>
                 </mxCell>
-                <mxCell id="2" value="Camera Logitech C925" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+                <mxCell id="2" value="Camera Logitech C925e" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">
                     <mxGeometry x="410" y="400" width="120" height="40" as="geometry"/>
                 </mxCell>
                 <mxCell id="4" value="Robot MyArm M750" style="rounded=0;whiteSpace=wrap;html=1;" vertex="1" parent="1">

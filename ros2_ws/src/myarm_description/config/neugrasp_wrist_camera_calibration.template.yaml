@@ -20,7 +20,7 @@ camera_body_frame: "wrist_camera_link"
 camera_optical_frame: "wrist_camera_optical_frame"
 
 # ``generic`` consumes the three transforms below at launch. Named profiles
-# such as ``logitech_c925_wrist_v1`` use a fixed model Xacro; keep the values
+# such as ``logitech_c925e_wrist_v1`` use a fixed model Xacro; keep the values
 # mirrored here for calibration provenance and review.
 camera_profile: "generic"
 

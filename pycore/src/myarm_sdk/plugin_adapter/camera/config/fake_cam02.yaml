@@ -1,0 +1,16 @@
+instance_id: fake_cam02
+plugin_adapter: fake
+capture:
+  width: 1280
+  height: 720
+  fps: 30.0
+  pixel_format: MJPG
+  buffer_size: 1
+  encoding: bgr8
+intrinsic_calibration:
+  # Test only: never reuse cam01's intrinsic for an actual second camera.
+  path: plugin_adapter/camera/config/calibration/logitech_c925e_cam01_1280x720_mjpg.json
+  require_exact_resolution: true
+  allow_uncalibrated: false
+frames:
+  optical_frame: fake_cam02_optical_frame

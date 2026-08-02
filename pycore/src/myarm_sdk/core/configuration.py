@@ -1,5 +1,6 @@
-"""Small YAML configuration loader shared by SDK services."""
+"""Small configuration loaders shared by SDK services."""
 
+import json
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -34,3 +35,15 @@ def load_yaml(path: Path) -> Mapping[str, Any]:
 def load_sdk_yaml(relative_path: str) -> Mapping[str, Any]:
     """Load a YAML mapping stored as package data in ``myarm_sdk``."""
     return load_yaml(resolve_sdk_path(relative_path))
+
+
+def load_sdk_json(relative_path: str) -> Mapping[str, Any]:
+    """Load a JSON mapping stored as package data in ``myarm_sdk``."""
+    path = resolve_sdk_path(relative_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Configuration file does not exist: {path}")
+    with path.open(encoding="utf-8") as config_file:
+        document = json.load(config_file)
+    if not isinstance(document, dict):
+        raise TypeError(f"Configuration root must be a mapping: {path}")
+    return document

@@ -66,30 +66,77 @@ services:
       power_off_service: /myarm/robot/power_off
 
   camera:
-    enabled: false
+    enabled: true
+    default_profile: none
+    profiles:
+      none:
+        instances: []
+      cam01:
+        instances: [cam01]
+      cam02:
+        instances: [cam02]
+      dual:
+        instances: [cam01, cam02]
+      fake_dual:
+        # Test-only profile. It never represents two calibrated physical cameras.
+        instances: [fake_cam01, fake_cam02]
     instances:
       cam01:
-        enabled: false
+        enabled: true
+        role: wrist
         plugin_adapter: opencv
         plugin_config: plugin_adapter/camera/config/cam01.yaml
-        topic_namespace: /myarm/cameras/cam01
-        publish_rate_hz: 5.0
-        mount:
-          parent_frame: wrist_link
-          child_frame: cam01_link
-          translation_m: [0.0, 0.0, 0.0]
-          rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+        ros:
+          node_name: myarm_camera
+          namespace: /myarm/cameras/cam01
+          publish_rate_hz: 30.0
+          topics:
+            image_raw: image_raw
+            camera_info: camera_info
+            diagnostics: diagnostics
+          optical_frame: wrist_camera_optical_frame
       cam02:
         enabled: false
+        role: unassigned
         plugin_adapter: opencv
         plugin_config: plugin_adapter/camera/config/cam02.yaml
-        topic_namespace: /myarm/cameras/cam02
-        publish_rate_hz: 5.0
-        mount:
-          parent_frame: shoulder_link
-          child_frame: cam02_link
-          translation_m: [0.0, 0.0, 0.0]
-          rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
+        ros:
+          node_name: myarm_camera
+          namespace: /myarm/cameras/cam02
+          publish_rate_hz: 30.0
+          topics:
+            image_raw: image_raw
+            camera_info: camera_info
+            diagnostics: diagnostics
+          optical_frame: cam02_optical_frame
+      fake_cam01:
+        enabled: true
+        role: fake_test
+        plugin_adapter: fake
+        plugin_config: plugin_adapter/camera/config/fake_cam01.yaml
+        ros:
+          node_name: myarm_camera
+          namespace: /myarm/cameras/fake_cam01
+          publish_rate_hz: 30.0
+          topics:
+            image_raw: image_raw
+            camera_info: camera_info
+            diagnostics: diagnostics
+          optical_frame: wrist_camera_optical_frame
+      fake_cam02:
+        enabled: true
+        role: fake_test
+        plugin_adapter: fake
+        plugin_config: plugin_adapter/camera/config/fake_cam02.yaml
+        ros:
+          node_name: myarm_camera
+          namespace: /myarm/cameras/fake_cam02
+          publish_rate_hz: 30.0
+          topics:
+            image_raw: image_raw
+            camera_info: camera_info
+            diagnostics: diagnostics
+          optical_frame: fake_cam02_optical_frame
 
   kinematics:
     enabled: true

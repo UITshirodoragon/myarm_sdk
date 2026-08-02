@@ -1,14 +1,17 @@
 instance_id: cam02
 plugin_adapter: opencv
 device:
+  # Generic disabled slot. It intentionally has no production device identity.
   device_path: null
-  fallback_index: 1
+  allow_fallback_index: false
 capture:
-  width: 640
-  height: 480
-  fps: 5.0
+  width: 1280
+  height: 720
+  fps: 30.0
+  pixel_format: MJPG
+  buffer_size: 1
   encoding: bgr8
 intrinsic_calibration:
-  camera_info_url: null
+  allow_uncalibrated: false
 frames:
   optical_frame: cam02_optical_frame

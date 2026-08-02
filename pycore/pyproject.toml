@@ -33,5 +33,6 @@ namespaces = false
 [tool.setuptools.package-data]
 myarm_sdk = [
   "plugin_adapter/**/config/*.yaml",
+  "plugin_adapter/**/config/*.json",
   "service/config/*.yaml",
 ]

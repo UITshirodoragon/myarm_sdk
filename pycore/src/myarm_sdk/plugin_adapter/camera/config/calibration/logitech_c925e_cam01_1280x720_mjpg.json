@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "calibration_id": "logitech_c925e_cam01_1280x720_mjpg_20260602",
+  "source_sha256": "1695992ee0283153b9d703e25ea2aa076b9b3bc241d734fe7634993490c71deb",
+  "source_path": "/home/ktmt-agx-xv/Data/khoanhd/Octo_Lab/NeuGrasp_real_runtime_v0_1_3/NeuGrasp/real_runtime/configs/camera_calib_20260602/wrist_camera_intrinsics_calibrated.json",
+  "source_report_sha256": "4cc10e86d538e58e6824ed56e90e4f3dc8946f6b9b3b76e4b411b86e1a3df1fb",
+  "raw_capture_mode": "1280x720@30/MJPG",
+  "quality": {
+    "global_reprojection_rms_px": 0.35726401926327245,
+    "valid_images": 38,
+    "removed_outliers": 12
+  },
+  "width": 1280,
+  "height": 720,
+  "camera_matrix": [
+    [957.7466420322729, 0.0, 636.8838557623897],
+    [0.0, 948.8202345535009, 352.2327638220411],
+    [0.0, 0.0, 1.0]
+  ],
+  "distortion_model": "opencv_radtan5",
+  "distortion_coefficients": [
+    0.029160140119760612,
+    -0.1539469651109584,
+    0.0026957611800758176,
+    -0.000434736430367383,
+    0.11352678232045557
+  ]
+}

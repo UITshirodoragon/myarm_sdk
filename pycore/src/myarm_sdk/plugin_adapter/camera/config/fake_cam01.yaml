@@ -1,10 +1,5 @@
-instance_id: cam01
-plugin_adapter: opencv
-device:
-  # Commissioning must replace this with the C925e capture endpoint ending in
-  # video-index0. /dev/video0 and numeric fallbacks are never production IDs.
-  device_path: /dev/v4l/by-id/usb-046d_Logitech_Webcam_C925e_48C11EAF-video-index0
-  allow_fallback_index: false
+instance_id: fake_cam01
+plugin_adapter: fake
 capture:
   width: 1280
   height: 720

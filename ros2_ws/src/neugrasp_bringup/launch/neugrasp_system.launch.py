@@ -26,7 +26,7 @@ from launch_ros.substitutions import FindPackageShare
 
 _SUPPORTED_WRIST_CAMERA_PROFILES = frozenset((
     "generic",
-    "logitech_c925_wrist_v1",
+    "logitech_c925e_wrist_v1",
 ))
 
 

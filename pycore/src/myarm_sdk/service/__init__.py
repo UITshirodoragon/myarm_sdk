@@ -1,7 +1,8 @@
 """Capability-focused services used directly by ROS 2 nodes."""
 
-from .camera import CameraService
+from .camera import CameraService, CameraServiceError
 from .cartesian_trajectory import CartesianTrajectoryPlannerService
+from .joint_trajectory import JointTrajectoryPlannerService
 from .kinematics import KinematicsService, KinematicsServiceError, KinematicsStep
 from .motion_execution import (
     MotionExecutionService,
@@ -14,11 +15,12 @@ from .robot_arm import (
     RobotArmService,
     RobotArmServiceError,
 )
-from .joint_trajectory import JointTrajectoryPlannerService
 
 __all__ = [
     "CameraService",
+    "CameraServiceError",
     "CartesianTrajectoryPlannerService",
+    "JointTrajectoryPlannerService",
     "KinematicsService",
     "KinematicsServiceError",
     "KinematicsStep",
@@ -29,5 +31,4 @@ __all__ = [
     "RobotArmGripperFeedback",
     "RobotArmService",
     "RobotArmServiceError",
-    "JointTrajectoryPlannerService",
 ]

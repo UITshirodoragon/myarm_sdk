@@ -1,3 +1,7 @@
+> Tài liệu này là ghi chú thiết kế lịch sử. Runtime C925e v1 hiện hành được
+> chốt tại [camera_c925e.md](camera_c925e.md); các ví dụ C922 bên dưới không
+> phải cấu hình để triển khai.
+
 Bạn nói đúng. Với kiến trúc hiện tại của SDK, **ROS camera node nên sử dụng `CameraService` làm tầng giao tiếp duy nhất với camera**. Việc tôi đề xuất dùng trực tiếp `usb_cam` làm production node đã làm mất vai trò của service và không còn nhất quán với kiến trúc:
 
 ```text

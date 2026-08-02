@@ -8,25 +8,34 @@
 -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="myarm_m750">
   <xacro:arg name="use_wrist_camera" default="false"/>
+  <xacro:arg name="wrist_camera_profile" default="generic"/>
   <xacro:arg name="wrist_camera_mount_xyz" default="0 0 0"/>
   <xacro:arg name="wrist_camera_mount_rpy" default="0 0 0"/>
   <xacro:arg name="wrist_camera_xyz" default="0 0 0"/>
   <xacro:arg name="wrist_camera_rpy" default="0 0 0"/>
   <xacro:arg name="wrist_camera_optical_xyz" default="0 0 0"/>
   <xacro:arg name="wrist_camera_optical_rpy" default="-1.570796326794897 0 -1.570796326794897"/>
+  <xacro:property name="camera_profile" value="$(arg wrist_camera_profile)"/>
 
   <!-- Plain URDF on purpose: pycore and Pinocchio continue to consume it. -->
   <xacro:include filename="myarm_m750_poe_v3_2.urdf"/>
   <xacro:include filename="xacro/sensors/wrist_camera.xacro"/>
+  <xacro:include filename="xacro/sensors/mounts/logitech_c925e_wrist_mount.xacro"/>
+  <xacro:include filename="xacro/sensors/profiles/logitech_c925e_wrist_camera.xacro"/>
 
   <xacro:if value="$(arg use_wrist_camera)">
-    <xacro:myarm_wrist_camera
-      parent_link="gripper_base_link"
-      mount_xyz="$(arg wrist_camera_mount_xyz)"
-      mount_rpy="$(arg wrist_camera_mount_rpy)"
-      camera_xyz="$(arg wrist_camera_xyz)"
-      camera_rpy="$(arg wrist_camera_rpy)"
-      optical_xyz="$(arg wrist_camera_optical_xyz)"
-      optical_rpy="$(arg wrist_camera_optical_rpy)"/>
+    <xacro:if value="${camera_profile == 'generic'}">
+      <xacro:myarm_wrist_camera
+        parent_link="gripper_base_link"
+        mount_xyz="$(arg wrist_camera_mount_xyz)"
+        mount_rpy="$(arg wrist_camera_mount_rpy)"
+        camera_xyz="$(arg wrist_camera_xyz)"
+        camera_rpy="$(arg wrist_camera_rpy)"
+        optical_xyz="$(arg wrist_camera_optical_xyz)"
+        optical_rpy="$(arg wrist_camera_optical_rpy)"/>
+    </xacro:if>
+    <xacro:if value="${camera_profile == 'logitech_c925e_wrist_v1'}">
+      <xacro:myarm_logitech_c925e_wrist_camera/>
+    </xacro:if>
   </xacro:if>
 </robot>

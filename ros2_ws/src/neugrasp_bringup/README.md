@@ -21,7 +21,7 @@ Physical NeuGrasp motion is not enabled by this package.
 robot_state_publisher (NeuGrasp Xacro)
   base_link -> arm -> flange_link -> tool0
                               └-> gripper_base_link
-                                   -> logitech_c925_wrist_mount_link  (C925 profile)
+                                   -> logitech_c925e_wrist_mount_link  (C925e profile)
                                    -> wrist_camera_link
                                    -> wrist_camera_optical_frame
 
@@ -61,11 +61,11 @@ It only adds fixed links below `gripper_base_link`; it never changes the arm,
 ## Camera model profiles and fixed frames
 
 The camera subtree is composed as **robot + named mount + camera model**. The
-current measured profile is `logitech_c925_wrist_v1`:
+current measured profile is `logitech_c925e_wrist_v1`:
 
 ```text
 gripper_base_link
-  -> logitech_c925_wrist_mount_link
+  -> logitech_c925e_wrist_mount_link
   -> wrist_camera_link
   -> wrist_camera_optical_frame
 ```
@@ -116,13 +116,13 @@ PY
 ```
 
 Every calibration record names `camera_profile`. `generic` consumes `mount`,
-`camera_body` and `camera_optical` from YAML. `logitech_c925_wrist_v1` selects
+`camera_body` and `camera_optical` from YAML. `logitech_c925e_wrist_v1` selects
 the fixed model Xacro; the same values remain in YAML for provenance and must
-stay synchronized. The checked-in C925 measurement record is deliberately
-`UNVERIFIED`; it must not be marked `CALIBRATED` until physical TF validation
-has passed.
+stay synchronized. The checked-in C925e measurement record is `CALIBRATED`;
+its mount, body and optical transforms were physically verified for the
+dedicated wrist mount.
 
-`neugrasp_fake_wrist_camera_calibration.yaml` uses C925 geometry only for
+`neugrasp_fake_wrist_camera_calibration.yaml` uses C925e geometry only for
 fake-arm visualization. Its `FAKE` status makes it unusable with a physical
 adapter.
 
@@ -131,10 +131,10 @@ adapter.
 Treat mount, camera body and optical-frame values as one calibration change.
 Never add a second `static_transform_publisher` for these frames.
 
-1. For C925, edit the named mount/profile Xacros and mirror the measurement in
-   `config/camera_profiles/logitech_c925_wrist_v1.measurement.yaml`. For a new
+1. For C925e, edit the named mount/profile Xacros and mirror the measurement in
+   `config/camera_profiles/logitech_c925e_wrist_v1.measurement.yaml`. For a new
    model, add a new mount Xacro and camera-profile Xacro instead of changing
-   the C925 profile.
+   the C925e profile.
 2. Update the calibration record. A physical record requires
    `status: CALIBRATED` and a regenerated `calibration_sha256`.
 3. Reinstall packages, generate the URDF explicitly, then validate it:
@@ -146,7 +146,7 @@ Never add a second `static_transform_publisher` for these frames.
    source install/setup.bash
 
    xacro "$(ros2 pkg prefix myarm_description)/share/myarm_description/urdf/myarm_m750_neugrasp.urdf.xacro" \
-     use_wrist_camera:=true wrist_camera_profile:=logitech_c925_wrist_v1 \
+     use_wrist_camera:=true wrist_camera_profile:=logitech_c925e_wrist_v1 \
      > /tmp/myarm_m750_neugrasp_c925.urdf
    check_urdf /tmp/myarm_m750_neugrasp_c925.urdf
    ```

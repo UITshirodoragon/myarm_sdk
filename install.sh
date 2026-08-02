@@ -23,6 +23,9 @@ case "${1:-}" in
   --robot-arm)
     extras="pycore,robot-arm"
     ;;
+  --camera)
+    extras="pycore,camera"
+    ;;
   --robot-arm-kinematics)
     requirements_file="$ROOT_DIR/requirements/kinematics.txt"
     extras="pycore,robot-arm,kinematics"
@@ -40,7 +43,7 @@ case "${1:-}" in
     extras="pycore,dev,robot-arm,kinematics"
     ;;
   *)
-    echo "Usage: $0 [--kinematics|--robot-arm|--robot-arm-kinematics|--dev|--dev-kinematics|--dev-robot-arm-kinematics]" >&2
+    echo "Usage: $0 [--camera|--kinematics|--robot-arm|--robot-arm-kinematics|--dev|--dev-kinematics|--dev-robot-arm-kinematics]" >&2
     exit 2
     ;;
 esac
