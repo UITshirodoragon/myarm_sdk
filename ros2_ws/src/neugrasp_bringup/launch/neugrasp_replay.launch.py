@@ -32,12 +32,15 @@ def generate_launch_description():
         DeclareLaunchArgument(
             "source_frame",
             default_value="base_link",
-            description="Known coordinate frame encoded by both legacy PLY files.",
+            description=(
+                "Deprecated compatibility argument. Tensor replay has no source TF frame "
+                "and ignores this value."
+            ),
         ),
         DeclareLaunchArgument(
             "target_frame",
             default_value="neugrasp_volume",
-            description="Current scene frame used in every replay message header.",
+            description="Current local volume frame used in every replay message header.",
         ),
         DeclareLaunchArgument(
             "enable_scene_frames",

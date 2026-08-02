@@ -22,6 +22,7 @@ setup(
         "console_scripts": [
             "neugrasp_scan_node = myarm_neugrasp.scan_node:main",
             "neugrasp_replay_node = myarm_neugrasp.replay_node:main",
+            "neugrasp_trial_node = myarm_neugrasp.trial_node:main",
         ],
     },
 )

@@ -9,7 +9,8 @@ The runtime is deliberately phase-oriented:
 ```text
 scene_debug  -> inspect workspace and generated camera targets
 fake_scan    -> execute targets one-at-a-time against FakeRobotArm
-replay       -> feed saved images with the current scene/robot frame config
+replay       -> render saved tensors in the current scene/robot frame config
+fake_trial   -> one automatic tensor-only scan/pick sequence against FakeRobotArm
 ```
 
 Physical NeuGrasp motion is not enabled by this package.
@@ -307,50 +308,58 @@ Replay starts no driver, camera or NeuGrasp inference model. It starts the
 current robot description and, by default, the current `scene_config`; these
 are the only owners of robot/camera/workspace/volume frame relationships.
 
-Replay is a **two-file PLY visualization** phase. It reads exactly:
+Replay is a tensor visualization phase. It reads exactly the four raw model
+outputs below:
 
 ```text
-visualizations/tsdf_near_surface_base.ply
-visualizations/grasp_candidates_wireframes_base.ply
+inference/tsdf_vol.npy
+inference/qual_vol_raw.npy
+inference/rot_vol_raw.npy
+inference/width_vol_raw.npy
 ```
 
-It does not read any `.npy`, JSON candidate, calibration, TF snapshot, scan
-metadata, image, or inference manifest from the run.
+It does not read either legacy `.ply`, a JSON candidate, calibration, TF
+snapshot, scan metadata, image, or inference manifest from the run.
 
 ```bash
 ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
   run_dir:=/home/ktmt-agx-xv/Data/khoanhd/Octo_Lab/NeuGrasp_real_runtime_v0_1_3/NeuGrasp/real_runtime/runs/neugrasp_real_20260626_105154
 ```
 
-Append `start_rviz:=true` to use the supplied PLY-only NeuGrasp RViz profile.
+Append `start_rviz:=true` to use the supplied NeuGrasp RViz profile.
 
-Both PLY files are documented by the legacy runtime as `base_link` products.
-The replay node waits for the **current** transform:
+The tensors are an unframed lattice. The replay node maps their indices
+directly into the current local volume frame; it performs no TF lookup and
+does not consume a transform or calibration from the run. With the standard
+NeuGrasp volume (`0.30 m`, resolution `40`), the voxel size is `0.0075 m`.
+The default `voxel_reference:=center` publishes voxel centres
+`(index + 0.5) * voxel_size`, so RViz boxes of size `0.0075 m` fill exactly
+the configured `neugrasp_volume` bounds.
+
+Both ROS headers are therefore `neugrasp_volume` by default:
 
 ```text
-T_target_frame_source_frame
-T_neugrasp_volume_base_link     # default
-```
-
-and transforms every PLY vertex before publishing. Therefore both ROS headers
-are `neugrasp_volume` by default, but no run TF/calibration is consumed:
-
-```text
-/neugrasp/tsdf_cloud          sensor_msgs/PointCloud2, packed PLY RGB
+/neugrasp/tsdf_cloud          sensor_msgs/PointCloud2, generated packed RGB
 /neugrasp/grasp_wireframes    visualization_msgs/Marker, LINE_LIST
 ```
 
-RViz uses `RGB8` only for `/neugrasp/tsdf_cloud` because RGB is a native field
-of `tsdf_near_surface_base.ply`; it is not a scalar TSDF rendering mode. The
-wireframe PLY is published as an orange `LINE_LIST`, exactly following its edge
-graph. The default RViz profile contains no TSDF tensor, quality cloud,
-candidate JSON, selected-grasp, scan-pose, or trajectory display.
+`/neugrasp/tsdf_cloud` selects `-0.85 < TSDF < 0.0`; its `RGB8` colour is a
+generated near-surface colour map, not a model RGB output. The grasp marker
+reproduces the legacy NeuGrasp postprocess: Gaussian quality smoothing,
+TSDF/width validity mask, score threshold, and local-maximum suppression. It
+then uses the corresponding quaternion and width tensor to draw the standard
+four-edge gripper wireframe. Widths above the actual MyArm opening `0.08 m`
+are rejected. The default RViz profile contains no image, manifest, candidate
+JSON or historical run-frame display; scan route/pose markers are published
+only while a `ScanWorkspace` action is active.
 
-If your current scene uses different frame names, override the node contract:
+If your current scene uses a different volume frame, override the node
+contract. `source_frame` remains accepted only for backwards-compatible launch
+commands and is ignored by tensor replay:
 
 ```bash
 ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
-  run_dir:=/path/to/run source_frame:=base_link target_frame:=neugrasp_volume
+  run_dir:=/path/to/run target_frame:=neugrasp_volume
 ```
 
 To include the current wrist-camera Xacro profile in that TF tree, opt in with
@@ -362,7 +371,106 @@ ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
   camera_calibration:=/path/to/current_camera_calibration.yaml
 ```
 
-Replay is visualization-only: neither PLY product is a motion command.
+Replay is visualization-only: neither topic is a motion command.
+
+## Fake autonomous one-trial path
+
+`neugrasp_fake_trial.launch.py` is a separate **FakeRobotArm-only** path. It
+does not include either `neugrasp_replay.launch.py` or
+`neugrasp_fake_scan.launch.py`, so there is exactly one robot-state publisher,
+ static scene-frame node, fake driver, motion executor, scan node and trial
+ coordinator in the graph. The trial coordinator itself creates the retained
+ artifact snapshot only in its Predict phase. It must never be used with a physical
+adapter.
+
+The required `run_dir` supplies only the four raw tensors below. No camera
+node, images, old run TF/calibration, JSON/PLY artifact, inference manifest or
+NeuGrasp inference model is started or consumed.
+
+```text
+inference/tsdf_vol.npy
+inference/qual_vol_raw.npy
+inference/rot_vol_raw.npy
+inference/width_vol_raw.npy
+```
+
+Start one automatic fake trial with a completed run:
+
+```bash
+ros2 launch neugrasp_bringup neugrasp_fake_trial.launch.py \
+  run_dir:=/home/ktmt-agx-xv/Data/khoanhd/Octo_Lab/NeuGrasp_real_runtime_v0_1_3/NeuGrasp/real_runtime/runs/neugrasp_real_20260603_194238 \
+  start_rviz:=true
+```
+
+The launch passes `neugrasp_simulation_views_16_19` directly to the
+`ScanWorkspace` action; it does not depend on `trajectory.active_profile`.
+Override it only with another fake-validated profile:
+
+```bash
+ros2 launch neugrasp_bringup neugrasp_fake_trial.launch.py \
+  run_dir:=/path/to/completed/run \
+  scan_profile_id:=neugrasp_simulation_views_16_19
+```
+
+The coordinator runs exactly once and publishes its current phase on
+`/neugrasp/trial/phase`:
+
+```text
+READY -> INIT/HOME -> SCAN -> PREDICT artifact -> SELECT/PREFLIGHT
+      -> PREGRASP -> GRASP -> CLOSE -> LIFT -> COMPLETE
+```
+
+It first waits for fresh feedback, current `base_link <- neugrasp_volume` TF,
+the scan/executor actions and gripper feedback. It opens the fake gripper to
+the actual MyArm maximum opening of `0.08 m`, moves home with a validated
+minimum-jerk joint trajectory, and calls the scan action with
+`execute_motion=true`, `capture_enabled=false` and `settle_time_s=2.0` for each
+scan view. Predict reconstructs the
+standard Gaussian/TSDF/width/local-maxima NeuGrasp candidates from tensors at
+voxel centres `(index + 0.5) * voxel_size`.
+
+Timing is explicit in `config/neugrasp_fake_trial.yaml`: every completed
+non-terminal phase (`INIT_HOME`, `SCAN`, `PREDICT_ARTIFACT`,
+`SELECT_PREFLIGHT`, `PREGRASP`, `GRASP`, `CLOSE`, `LIFT`) has a default
+three-second settle before the next phase. The coordinator remains responsive:
+cancel/failure stops immediately and never waits out a settle. The scan action
+keeps its distinct two-second settle at each view.
+
+No artifact is published during READY, INIT or SCAN. Entering
+`PREDICT_ARTIFACT` publishes one retained snapshot in `neugrasp_volume`.
+For WLAN/RViz it renders the configured inclusive Z-index range `[5, 30]`
+from the NeuGrasp volume (the volume floor is `0.0503 m` below workspace);
+tensor postprocess, candidate selection and motion still use the full 40-cubed
+volumes. Standalone replay uses the same Z-index-range, one-shot retained snapshot
+policy; it does not resend the TSDF at 1 Hz. Set
+`republish_period_s` only for a legacy volatile subscriber.
+
+Candidates are tried in descending quality only in a scratch IK preflight:
+`pregrasp -> grasp -> lift`. The first candidate that makes all three states
+feasible is selected. Each real motion is re-solved from fresh feedback; a
+missing tensor/TF, scan failure, cancellation, infeasible candidate or motion
+failure cancels the active motion and terminally stops the trial. There are no
+retries and it never sends a later grasp command after a failure.
+
+The fake profile explicitly configures `T_grasp_tool0`: translation
+`[0, 0, +0.05] m`, then `Rx(pi)` (XYZW `[-1, 0, 0, 0]`). The coordinator
+composes this direct grasp-to-tool0 relation when forming its tool target; it
+is a synthetic mapping preflighted only for the current FakeRobotArm scene,
+not a TCP or camera calibration. Pregrasp retreats `0.05 m` along predicted grasp
+`-Z`; top-down lift retreats `0.10 m` along that same local axis, while a side
+grasp lifts `+Z_base` by `0.10 m` (top-down threshold: `60 deg`). FakeRobotArm
+has no collision, contact or object attachment model, so `COMPLETE` means the
+command sequence finished, not that an object was physically grasped.
+
+After a terminal phase the launch deliberately stays alive: RViz can keep the
+TSDF, quality-coloured candidates, selected green tool target, cyan pregrasp,
+purple lift and final fake robot pose visible. It does not create a second
+trial. RViz Foxy has no built-in `std_msgs/String` display, so inspect phase
+text from a terminal when needed:
+
+```bash
+ros2 topic echo /neugrasp/trial/phase
+```
 
 ## RViz, messages and QoS
 
@@ -372,14 +480,27 @@ Replay is visualization-only: neither PLY product is a motion command.
 /neugrasp/workspace_marker
 /neugrasp/tsdf_cloud
 /neugrasp/grasp_wireframes
+/neugrasp/selected_grasp              # PoseStamped, green tool0 target
+/neugrasp/selected_grasp_marker       # Marker, green NeuGrasp grasp-frame wireframe
+/neugrasp/pregrasp_marker             # Marker, cyan NeuGrasp pregrasp-frame wireframe
+/neugrasp/lift_marker                 # Marker, purple NeuGrasp lift-frame wireframe
+/neugrasp/scan_view_markers           # MarkerArray, scan phase only
 ```
 
-Replay cloud and marker snapshots use retained reliable delivery and are
-republished at 1 Hz. The two raw PLY files are never streamed over DDS.
+Replay cloud and marker snapshots use reliable, transient-local one-shot
+delivery; the Grasp Tensor Wireframes RViz display uses the matching QoS so a
+remote RViz opened after Predict receives them. Trial target markers use the
+same retained reliable policy. During `SCAN`, the scan MarkerArray displays
+the capture route, camera frusta, labels and pose axes (X red, Y green, Z
+blue); the scan node publishes a retained delete snapshot on completion,
+cancel or abort. The phase topic is `std_msgs/String`, intended for terminal
+or monitoring tools rather than the stock Foxy RViz display. The four raw
+tensors are never streamed over DDS.
 
 ## Safety boundary
 
-`neugrasp_fake_scan.launch.py` explicitly asserts `fake_robot_arm`; it is the
-only execution launch supplied. Before any physical profile is considered,
-collision checking, tracking-error fault behavior, certified calibration and
-measured reachability of every scan view must be completed.
+`neugrasp_fake_scan.launch.py` and `neugrasp_fake_trial.launch.py` explicitly
+assert `fake_robot_arm`; no physical execution launch is supplied. Before any
+physical profile is considered, collision checking, tracking-error fault
+behavior, certified calibration and measured reachability of every scan view
+must be completed.

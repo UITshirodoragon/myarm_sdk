@@ -809,11 +809,11 @@ rotation của top grasp
 
 ---
 
-# 10. Replay `.npy` và `.ply` không chạy model
+# 10. Replay tensor `.npy` không chạy model
 
-SDK hiện tại chỉ triển khai replay PLY: `tsdf_near_surface_base.ply` và
-`grasp_candidates_wireframes_base.ply`. Các tensor/JSON dưới đây vẫn là output
-runtime hữu ích, nhưng không được node replay đọc hoặc publish.
+SDK replay trực tiếp bốn tensor raw trong `inference/`, không dùng PLY hoặc
+quan hệ frame/calibration đã lưu trong run. `neugrasp_volume` của scene hiện
+tại là frame duy nhất của geometry replay.
 
 Run hiện tại chứa:
 
@@ -850,7 +850,11 @@ RViz Size (m) = 0.0075
 Như vậy 40 box liên tiếp phủ đúng đoạn `[0, 0.30]` của
 `neugrasp_volume`, không lệch nửa voxel.
 
-Không nên tự suy luận channel order của `rot_vol_raw.npy`. Replay grasp nên ưu tiên dùng `candidates.json`, vì file này đã qua postprocess và chứa quaternion, translation, score và width rõ ràng.
+`rot_vol_raw.npy` được runtime cũ ghi theo thứ tự quaternion `xyzw`; replay
+dùng đúng convention đó, kết hợp `qual` và `width` qua cùng pipeline
+`process_volumes`/`select_candidates` của runtime cũ. Không dùng
+`candidates.json`, vì pose trong JSON đã được đổi sang base/TCP bằng calibration
+của run cũ.
 
 ---
 
@@ -884,55 +888,39 @@ Fields:
 x         float32
 y         float32
 z         float32
-tsdf      float32
+rgb       float32 packed RGB (màu sinh từ TSDF)
 ```
 
-Nếu sau này thêm replay tensor, canonical TSDF cloud nên dùng `Intensity` theo
-field `tsdf`. PLY-only replay hiện tại dùng `RGB8` vì PLY chứa RGB trực tiếp.
+Replay hiện tại dùng field packed `rgb` để RViz `RGB8` hiển thị được ngay.
+Màu được tạo từ giá trị TSDF near-surface (`-0.85` tới `0.0`), không phải RGB
+của camera hay PLY. Đây là lựa chọn visualization; geometry vẫn là tensor TSDF.
 
 ROS 2 cung cấp `PointCloud2` trong `sensor_msgs` để biểu diễn point-cloud dạng binary có layout mô tả bởi `PointField`. ([ROS 2 Documentation][5])
 
-### Existing PLY
-
-`tsdf_near_surface_base.ply` hiện tại:
+Tensor index được map vào current volume theo:
 
 ```text
-7735 vertices
-x, y, z, RGB
+p_neugrasp_volume = (index + 0.5) * voxel_size
 ```
 
-Tọa độ đã nằm trong base frame.
-
-Raw PLY vẫn có tọa độ `base_link`. Khi cần dùng PLY trong replay với scene
-hiện tại, node phải chờ TF hiện tại:
-
-```text
-T_neugrasp_volume_base_link
-```
-
-và đổi điểm sang `neugrasp_volume` trước khi publish. Không import TF hay
-calibration từ run cũ. Với PLY được export theo index corner của runtime cũ,
-thêm nửa voxel current-volume sau phép đổi để box RViz vẫn nằm tại voxel center.
+Không lookup TF trong node. TF tree hiện tại chỉ dùng bởi RViz để đưa
+`neugrasp_volume` về fixed frame.
 
 ---
 
-## 11.2. Grasp PLY thành Marker
+## 11.2. Tensor grasp thành Marker
 
-`grasp_candidates_wireframes_base.ply` hiện tại có:
+Replay xử lý `qual_vol_raw.npy`, `rot_vol_raw.npy`, `width_vol_raw.npy` bằng
+đúng Gaussian/mask/threshold/local-maxima của runtime cũ. Mỗi candidate được
+đặt tại local voxel centre, xoay theo quaternion `xyzw`, và có độ mở
+`width_vox * voxel_size`; candidate lớn hơn `0.08 m` bị loại.
 
-```text
-36 vertices
-24 edges
-```
-
-Đây là edge graph, không phải point cloud.
-
-PLY-only replay chuyển trực tiếp thành:
+Node xuất:
 
 ```text
 visualization_msgs/Marker
 type = LINE_LIST
-frame_id = neugrasp_volume  # sau current T_volume_base_link
+frame_id = neugrasp_volume
 ```
 
 Mỗi edge `(a,b)` tạo hai phần tử liên tiếp:
@@ -944,9 +932,9 @@ points[2k+1] = vertex[b]
 
 RViz `LINE_LIST` nối các cặp điểm `0–1`, `2–3`, `4–5` theo đúng cấu trúc này. ([ROS Documentation][6])
 
-Node dùng đúng edge graph từ PLY, tạo một `Marker::LINE_LIST` màu cam.
-Mọi endpoint được đổi bằng TF hiện tại `T_neugrasp_volume_base_link`; node
-không đọc transform hoặc calibration nào trong run.
+Node dùng cùng 4 cạnh wireframe gripper của runtime cũ, tạo một
+`Marker::LINE_LIST` màu cam. Node không đọc transform hoặc calibration nào
+trong run.
 
 Visualization node nên tạo:
 

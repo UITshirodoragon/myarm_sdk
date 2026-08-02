@@ -31,6 +31,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
 from sensor_msgs.msg import JointState
+from std_msgs.msg import ColorRGBA
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -179,7 +180,6 @@ class NeugraspScanNode(Node):
             cancel_callback=self._cancel_callback,
             callback_group=callback_group,
         )
-        self._publish_profile_visualization(self._profiles[self._default_profile_id])
         self.get_logger().info(
             "Neugrasp scan coordinator ready: profile={}, views={}, planner={}, action={}".format(
                 self._default_profile_id,
@@ -808,6 +808,9 @@ class NeugraspScanNode(Node):
                 completed,
             )
         finally:
+            # Scan targets are phase-local visualization, never a persistent
+            # scene relation. Clear retained markers before trial Predict.
+            self._clear_profile_visualization()
             with self._state_lock:
                 if goal_handle is self._active_goal:
                     self._active_goal = None
@@ -1166,7 +1169,36 @@ class NeugraspScanNode(Node):
             text.color.a = 1.0
             text.text = f"{index}: {view.key} ({view.source_view_id})"
             marker_array.markers.append(text)
+            marker_array.markers.append(self._view_axes_marker(index, view.camera_workspace, stamp))
         return marker_array
+
+    def _view_axes_marker(self, marker_id: int, pose: RigidTransform, stamp) -> Marker:
+        """Draw REP-103 optical-frame axes at one planned scan camera pose."""
+        from .math3d import rotate_vector
+
+        marker = self._marker("scan_view_axes", marker_id, Marker.LINE_LIST, stamp)
+        marker.scale.x = 0.0035
+        origin = self._point(pose.translation)
+        axes = (
+            ((1.0, 0.0, 0.0), (1.0, 0.0, 0.0, 1.0)),
+            ((0.0, 1.0, 0.0), (0.0, 1.0, 0.0, 1.0)),
+            ((0.0, 0.0, 1.0), (0.0, 0.35, 1.0, 1.0)),
+        )
+        for axis, rgba in axes:
+            rotated = rotate_vector(pose.rotation, axis)
+            marker.points.extend((origin, self._point((
+                pose.translation[0] + 0.04 * rotated[0],
+                pose.translation[1] + 0.04 * rotated[1],
+                pose.translation[2] + 0.04 * rotated[2],
+            ))))
+            marker.colors.extend((self._color(rgba), self._color(rgba)))
+        return marker
+
+    def _clear_profile_visualization(self) -> None:
+        self._scan_views_publisher.publish(self._pose_array(self._frames.workspace, []))
+        clear = Marker()
+        clear.action = Marker.DELETEALL
+        self._scan_markers_publisher.publish(MarkerArray(markers=[clear]))
 
     def _marker(self, namespace: str, marker_id: int, marker_type: int, stamp):
         marker = Marker()
@@ -1184,6 +1216,12 @@ class NeugraspScanNode(Node):
         point = Point()
         point.x, point.y, point.z = values
         return point
+
+    @staticmethod
+    def _color(values: Sequence[float]) -> ColorRGBA:
+        color = ColorRGBA()
+        color.r, color.g, color.b, color.a = values
+        return color
 
     def _frustum_points(self, pose: RigidTransform) -> List[Point]:
         depth = 0.06

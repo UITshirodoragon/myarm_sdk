@@ -7,8 +7,13 @@ Panels:
         - /Global Options1
         - /RobotModel1
         - /NeuGrasp Scene1
-        - /TSDF PLY Voxels1
-        - /Grasp PLY Wireframes1
+        - /TSDF Tensor Voxels1
+        - /Grasp Tensor Wireframes1
+        - /Scan Trajectory and View Axes (phase Scan only)1
+        - /Selected Grasp Tool Target1
+        - /Selected Grasp Wireframe1
+        - /Pregrasp Wireframe1
+        - /Lift Wireframe1
       Splitter Ratio: 0.5
     Tree Height: 760
   - Class: rviz_common/Selection
@@ -107,9 +112,9 @@ Visualization Manager:
         Value: /neugrasp/workspace_marker
       Value: true
 
-    # Both PLY files are converted by neugrasp_replay from source_frame to the
-    # current target_frame before publication. RGB8 is correct here because
-    # this PLY contains packed RGB values, unlike scalar TSDF tensors.
+    # neugrasp_replay derives this cloud from tsdf_vol.npy directly in the
+    # target_frame local volume.  RGB8 is a generated near-surface TSDF colour
+    # map, stored as the standard packed PointCloud2 `rgb` field.
     - Alpha: 0.82
       Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
@@ -124,7 +129,7 @@ Visualization Manager:
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
-      Name: TSDF PLY Voxels
+      Name: TSDF Tensor Voxels
       Position Transformer: XYZ
       Queue Size: 3
       Selectable: true
@@ -140,22 +145,108 @@ Visualization Manager:
       Use Fixed Frame: true
       Value: true
 
-    # `grasp_candidates_wireframes_base.ply` is an edge graph.  The replay
-    # node converts every endpoint through current target_frame <- source_frame
-    # TF before emitting this LINE_LIST marker.
+    # neugrasp_replay reproduces NeuGrasp postprocessing from qual_vol_raw.npy,
+    # rot_vol_raw.npy and width_vol_raw.npy, then renders each local candidate
+    # gripper as this LINE_LIST marker in target_frame.
     - Alpha: 1
       Class: rviz_default_plugins/Marker
       Enabled: true
-      Name: Grasp PLY Wireframes
+      Name: Grasp Tensor Wireframes
       Namespaces:
         grasp_wireframes: true
       Queue Size: 10
       Topic:
-        Depth: 5
-        Durability Policy: Volatile
+        Depth: 1
+        Durability Policy: Transient Local
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /neugrasp/grasp_wireframes
+      Value: true
+
+    # The scan action publishes this only while it is executing.  Its retained
+    # DELETEALL snapshot clears a remote RViz as soon as the action completes,
+    # cancels or aborts, before PREDICT_ARTIFACT begins.
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: Scan Trajectory and View Axes (phase Scan only)
+      Namespaces:
+        scan_route: true
+        scan_frusta: true
+        scan_labels: true
+        scan_view_axes: true
+      Queue Size: 1
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /neugrasp/scan_view_markers
+      Value: true
+
+    # The trial coordinator publishes this PoseStamped in base_link.  Its
+    # green axes are the actual tool0 target, rather than a model-frame grasp
+    # pose, so it can be compared directly with RobotModel.
+    - Alpha: 1
+      Class: rviz_default_plugins/Pose
+      Color: 0; 255; 0
+      Enabled: true
+      Axes Length: 0.07
+      Axes Radius: 0.008
+      Name: Selected Grasp Tool Target
+      Shape: Axes
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /neugrasp/selected_grasp
+      Value: true
+
+    # These three retained snapshots show the selected grasp primitive in the
+    # same base frame as the robot: green=grasp, cyan=pregrasp, purple=lift.
+    - Alpha: 1
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Selected Grasp Wireframe
+      Namespaces:
+        selected_grasp: true
+      Queue Size: 10
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /neugrasp/selected_grasp_marker
+      Value: true
+
+    - Alpha: 1
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Pregrasp Wireframe
+      Namespaces:
+        pregrasp: true
+      Queue Size: 10
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /neugrasp/pregrasp_marker
+      Value: true
+
+    - Alpha: 1
+      Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: Lift Wireframe
+      Namespaces:
+        lift: true
+      Queue Size: 10
+      Topic:
+        Depth: 1
+        Durability Policy: Transient Local
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /neugrasp/lift_marker
       Value: true
   Global Options:
     Background Color: 48; 48; 48

@@ -1,0 +1,68 @@
+# Fake-only contract for neugrasp_fake_trial.launch.py.
+#
+# It maps a predicted NeuGrasp grasp pose to tool0 only for FakeRobotArm.  It
+# is intentionally not a physical TCP calibration and must never be copied to
+# a hardware launch/profile.
+schema_version: 1
+profile_id: fake_neugrasp_one_trial_v1
+mode: FAKE
+status: FAKE
+
+frames:
+  base: base_link
+  volume: neugrasp_volume
+  tool: tool0
+
+# T_grasp_tool0. This is the predicted-grasp-to-tool0 relation, not a camera
+# calibration. It is FAKE-only and exists solely for this scene.
+fake_grasp_to_tool0:
+  status: FAKE
+  profile_id: fake_grasp_to_tool0_rx_pi_z050_v1
+  translation_m: [0.0, 0.0, 0.05]
+  rotation_xyzw: [-1.0, 0.0, 0.0, 0.0]
+
+primitive:
+  # Pregrasp and top-down retreat are expressed along -Z of the predicted
+  # grasp frame.  A side grasp instead lifts along +Z of base_link.
+  pregrasp_distance_m: 0.05
+  lift_distance_m: 0.10
+  top_down_max_angle_deg: 60.0
+
+execution:
+  gripper_opening_m: 0.08
+  gripper_closed_m: 0.0
+  readiness_timeout_s: 15.0
+
+# Phase boundaries are intentionally slow and explicit for FakeRobotArm/RViz
+# observation over WLAN.  Scan has its own per-view capture settle interval.
+timing:
+  scan_view_settle_s: 3.0
+  after_phase_s:
+    init_home: 10.0
+    scan: 3.0
+    predict_artifact: 10.0
+    select_preflight: 3.0
+    pregrasp: 3.0
+    grasp: 3.0
+    close: 3.0
+    lift: 3.0
+
+# The volume floor is 0.0503 m below workspace. Render the inclusive TSDF
+# Z-index band [min, max] in neugrasp_volume to reduce WLAN/RViz traffic.
+# The full 40^3 tensors still drive postprocess, candidate ranking and IK.
+visualization:
+  tsdf_z_index_range: [5, 30]
+
+# Same raw NeuGrasp postprocess contract as replay.  Every metric point uses
+# the voxel centre `(index + 0.5) * voxel_size_m` in neugrasp_volume.
+artifacts:
+  volume_size_m: 0.30
+  volume_resolution: 40
+  tsdf_surface_threshold_low: -0.85
+  tsdf_surface_threshold_high: 0.0
+  gaussian_filter_sigma: 1.0
+  min_width_vox: 1.33
+  max_width_vox: 9.33
+  grasp_score_threshold: 0.70
+  max_filter_size: 4
+  gripper_max_width_m: 0.08
