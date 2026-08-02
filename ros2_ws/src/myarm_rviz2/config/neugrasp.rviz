@@ -8,6 +8,8 @@ Panels:
         - /Status1
         - /RobotModel1
         - /Neugrasp Scene1
+        - /TSDF Voxels (7.5 mm)1
+        - /Grasp Candidates (volume)1
         - /Scan Views1
       Splitter Ratio: 0.5
     Tree Height: 760
@@ -59,6 +61,8 @@ Visualization Manager:
         gripper_base_link:
           Value: true
         wrist_camera_mount_link:
+          Value: true
+        logitech_c925_wrist_mount_link:
           Value: true
         wrist_camera_link:
           Value: true
@@ -176,35 +180,35 @@ Visualization Manager:
         Value: /neugrasp/measured_camera_poses
       Value: true
 
-    # The four scan phases repeat, so scene data uses ordinary volatile QoS.
-    # Point clouds can remain visible during a phase without forcing a latched
-    # high-volume DDS contract.
-    - Alpha: 0.85
-      Autocompute Intensity Bounds: true
+    # Replay publishes local TSDF voxel centers in neugrasp_volume.  The
+    # current scene is 0.30 m / 40 = 0.0075 m per cubic voxel; Boxes must keep
+    # this exact size so they fill the configured volume without gaps/overlap.
+    - Alpha: 0.82
+      Autocompute Intensity Bounds: false
       Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
-        Value: true
+        Max Value: 0.2
+        Min Value: -0.2
+        Value: false
       Axis: Z
-      Channel Name: intensity
+      Channel Name: tsdf
       Class: rviz_default_plugins/PointCloud2
-      Color: 90; 170; 255
-      Color Transformer: FlatColor
+      Color: 255; 255; 255
+      Color Transformer: RGB8
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
-      Name: TSDF Cloud
+      Name: TSDF Voxels (7.5 mm)
       Position Transformer: XYZ
       Queue Size: 5
       Selectable: true
       Size (Pixels): 3
-      Size (m): 0.004
-      Style: Points
+      Size (m): 0.0075
+      Style: Boxes
       Topic:
-        Depth: 3
-        Durability Policy: Volatile
+        Depth: 1
+        Durability Policy: Transient Local
         History Policy: Keep Last
-        Reliability Policy: Best Effort
+        Reliability Policy: Reliable
         Value: /neugrasp/tsdf_cloud
       Use Fixed Frame: true
       Value: true
@@ -239,35 +243,22 @@ Visualization Manager:
       Use Fixed Frame: true
       Value: true
 
-    # Candidate grippers can be numerous; keep the batch off until inspection.
+    # candidates.json is replayed only through pose_cube_grasp, therefore the
+    # marker is local to neugrasp_volume and follows current scene TF.
     - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
+      Enabled: true
       Marker Topic: /neugrasp/grasp_candidates
-      Name: Grasp Candidates
+      Name: Grasp Candidates (volume)
       Namespaces:
         {}
       Queue Size: 20
       Value: true
 
-    # Raw legacy PLY wireframes use the old TCP convention, not the semantic
-    # grasp-frame convention used by candidates.json.  Keep this explicit and
-    # off by default so the two orientations are never confused.
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
-      Marker Topic: /neugrasp/legacy_grasp_wireframes
-      Name: Legacy TCP Grasp Wireframe
-      Namespaces:
-        {}
-      Queue Size: 20
-      Value: true
-
-    # The selected marker is the predicted gripper; RobotModel remains the
-    # physical robot/gripper visualization.
     - Alpha: 1
       Class: rviz_default_plugins/Marker
       Enabled: true
       Marker Topic: /neugrasp/selected_grasp_marker
-      Name: Selected Grasp Gripper
+      Name: Selected Grasp (volume)
       Namespaces:
         {}
       Queue Size: 10

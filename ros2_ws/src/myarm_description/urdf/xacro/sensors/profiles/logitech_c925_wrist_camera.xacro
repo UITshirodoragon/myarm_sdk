@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!--
+    Logitech C925 wrist-camera geometry, profile version 1.
+
+    The mount is fixed in mounts/logitech_c925_wrist_mount.xacro.  This
+    profile owns the measured mount->body and body->optical transforms.  The
+    resulting semantic optical frame remains wrist_camera_optical_frame so
+    consumers do not need model-specific TF names.
+  -->
+  <xacro:macro name="myarm_neugrasp_logitech_c925_wrist_camera">
+    <xacro:myarm_logitech_c925_wrist_mount parent_link="gripper_base_link"/>
+    <xacro:myarm_camera_body_and_optical
+      parent_link="logitech_c925_wrist_mount_link"
+      camera_xyz="0.00209 0.000 0.025"
+      camera_rpy="0.0 0.0 0.0"
+      optical_xyz="0.04 0 0.03"
+      optical_rpy="-1.570796326794897 0 -1.570796326794897"/>
+  </xacro:macro>
+</robot>

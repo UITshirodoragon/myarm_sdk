@@ -24,6 +24,12 @@ from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
+_SUPPORTED_WRIST_CAMERA_PROFILES = frozenset((
+    "generic",
+    "logitech_c925_wrist_v1",
+))
+
+
 def _as_bool(value: str, name: str) -> bool:
     normalized = value.strip().lower()
     if normalized in ("true", "1", "yes"):
@@ -66,7 +72,7 @@ def _calibration_payload_sha256(calibration: dict) -> str:
 
 
 def _camera_calibration_actions(context, *args, **kwargs):
-    """Resolve one named calibration into the Xacro compatibility arguments."""
+    """Resolve one named camera profile/calibration into Xacro arguments."""
     if not _as_bool(LaunchConfiguration("use_wrist_camera").perform(context), "use_wrist_camera"):
         return []
     calibration_value = LaunchConfiguration("camera_calibration").perform(context).strip()
@@ -112,6 +118,15 @@ def _camera_calibration_actions(context, *args, **kwargs):
             raise RuntimeError(
                 f"camera calibration {key} must be {expected!r}, got {calibration.get(key)!r}"
             )
+    # Existing named records without this field retain the generic transform
+    # path; new records should always write the profile explicitly.
+    camera_profile = calibration.get("camera_profile", "generic")
+    if camera_profile not in _SUPPORTED_WRIST_CAMERA_PROFILES:
+        raise RuntimeError(
+            "camera calibration camera_profile must be one of {}, got {!r}".format(
+                sorted(_SUPPORTED_WRIST_CAMERA_PROFILES), camera_profile
+            )
+        )
     required_adapter = LaunchConfiguration("required_robot_arm_plugin_adapter").perform(context).strip()
     if status == "FAKE" and required_adapter != "fake_robot_arm":
         raise RuntimeError(
@@ -120,9 +135,17 @@ def _camera_calibration_actions(context, *args, **kwargs):
         )
     mount = calibration.get("mount")
     camera_body = calibration.get("camera_body")
-    if not isinstance(mount, dict) or not isinstance(camera_body, dict):
-        raise RuntimeError("camera calibration requires mount and camera_body mappings")
+    camera_optical = calibration.get("camera_optical")
+    if (
+        not isinstance(mount, dict)
+        or not isinstance(camera_body, dict)
+        or not isinstance(camera_optical, dict)
+    ):
+        raise RuntimeError(
+            "camera calibration requires mount, camera_body and camera_optical mappings"
+        )
     return [
+        SetLaunchConfiguration("wrist_camera_profile", camera_profile),
         SetLaunchConfiguration(
             "wrist_camera_mount_xyz", _vector(mount.get("translation_m"), "mount.translation_m")
         ),
@@ -135,6 +158,17 @@ def _camera_calibration_actions(context, *args, **kwargs):
         ),
         SetLaunchConfiguration(
             "wrist_camera_rpy", _vector(camera_body.get("rpy_rad"), "camera_body.rpy_rad"),
+        ),
+        SetLaunchConfiguration(
+            "wrist_camera_optical_xyz",
+            _vector(
+                camera_optical.get("translation_m"),
+                "camera_optical.translation_m",
+            ),
+        ),
+        SetLaunchConfiguration(
+            "wrist_camera_optical_rpy",
+            _vector(camera_optical.get("rpy_rad"), "camera_optical.rpy_rad"),
         ),
     ]
 
@@ -164,10 +198,13 @@ def generate_launch_description():
     robot_description = Command([
         FindExecutable(name="xacro"), " ", application_xacro, " ",
         "use_wrist_camera:=", use_wrist_camera, " ",
+        "wrist_camera_profile:=", LaunchConfiguration("wrist_camera_profile"), " ",
         "wrist_camera_mount_xyz:='", LaunchConfiguration("wrist_camera_mount_xyz"), "' ",
         "wrist_camera_mount_rpy:='", LaunchConfiguration("wrist_camera_mount_rpy"), "' ",
         "wrist_camera_xyz:='", LaunchConfiguration("wrist_camera_xyz"), "' ",
-        "wrist_camera_rpy:='", LaunchConfiguration("wrist_camera_rpy"), "'",
+        "wrist_camera_rpy:='", LaunchConfiguration("wrist_camera_rpy"), "' ",
+        "wrist_camera_optical_xyz:='", LaunchConfiguration("wrist_camera_optical_xyz"), "' ",
+        "wrist_camera_optical_rpy:='", LaunchConfiguration("wrist_camera_optical_rpy"), "'",
     ])
 
     return LaunchDescription([
@@ -189,12 +226,18 @@ def generate_launch_description():
                 "Use a status=FAKE file only with the fake adapter."
             ),
         ),
-        # Internal compatibility values consumed by the Xacro command.  They
-        # are populated exclusively by _camera_calibration_actions.
+        # Internal values consumed by Xacro. They are populated exclusively
+        # by _camera_calibration_actions from the named calibration record.
+        DeclareLaunchArgument("wrist_camera_profile", default_value="generic"),
         DeclareLaunchArgument("wrist_camera_mount_xyz", default_value="0 0 0"),
         DeclareLaunchArgument("wrist_camera_mount_rpy", default_value="0 0 0"),
         DeclareLaunchArgument("wrist_camera_xyz", default_value="0 0 0"),
         DeclareLaunchArgument("wrist_camera_rpy", default_value="0 0 0"),
+        DeclareLaunchArgument("wrist_camera_optical_xyz", default_value="0 0 0"),
+        DeclareLaunchArgument(
+            "wrist_camera_optical_rpy",
+            default_value="-1.570796326794897 0 -1.570796326794897",
+        ),
         DeclareLaunchArgument(
             "scene_config",
             default_value=str(neugrasp_share / "config" / "neugrasp_scene.yaml"),

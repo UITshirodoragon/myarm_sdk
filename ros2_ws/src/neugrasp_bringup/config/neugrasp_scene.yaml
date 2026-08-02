@@ -16,7 +16,7 @@ static_frames:
     parent_frame: base_link
     child_frame: neugrasp_workspace
     # Lab placeholder only; replace with the measured cell calibration.
-    translation_m: [0.5, 0.0, 0.0]
+    translation_m: [0.50, 0.0, 0.0]
     rotation_xyzw: [0.0, 0.0, 0.0, 1.0]
 
   # A fixed external camera belongs to the cell, never robot URDF.  Keep it

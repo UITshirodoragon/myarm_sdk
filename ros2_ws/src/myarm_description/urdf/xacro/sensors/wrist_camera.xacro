@@ -6,7 +6,7 @@
     The transform chain is deliberately split so that the physical mounting
     calibration remains explicit:
 
-      parent_link -> wrist_camera_mount_link -> wrist_camera_link
+      parent_link -> mount link -> wrist_camera_link
                   -> wrist_camera_optical_frame
 
     ``mount_*`` is the calibrated bracket/mount transform.  ``camera_*`` is
@@ -20,19 +20,18 @@
     Pinocchio model.  Add verified mesh and collision geometry only when the
     physical camera dimensions are available.
   -->
-  <xacro:macro name="myarm_wrist_camera"
-               params="parent_link mount_xyz:='0 0 0' mount_rpy:='0 0 0'
-                       camera_xyz:='0 0 0' camera_rpy:='0 0 0'">
-    <link name="wrist_camera_mount_link"/>
-    <joint name="gripper_to_wrist_camera_mount_joint" type="fixed">
-      <parent link="${parent_link}"/>
-      <child link="wrist_camera_mount_link"/>
-      <origin xyz="${mount_xyz}" rpy="${mount_rpy}"/>
-    </joint>
-
+  <xacro:macro name="myarm_camera_body_and_optical"
+               params="parent_link camera_xyz:='0 0 0' camera_rpy:='0 0 0'
+                       optical_xyz:='0 0 0'
+                       optical_rpy:='-1.570796326794897 0 -1.570796326794897'">
+    <!--
+      This part is intentionally independent from the mount.  A model profile
+      can provide a named, fixed mount while reusing the semantic body and
+      optical frame names consumed by camera nodes and NeuGrasp.
+    -->
     <link name="wrist_camera_link"/>
     <joint name="wrist_camera_mount_joint" type="fixed">
-      <parent link="wrist_camera_mount_link"/>
+      <parent link="${parent_link}"/>
       <child link="wrist_camera_link"/>
       <origin xyz="${camera_xyz}" rpy="${camera_rpy}"/>
     </joint>
@@ -41,8 +40,28 @@
     <joint name="wrist_camera_optical_joint" type="fixed">
       <parent link="wrist_camera_link"/>
       <child link="wrist_camera_optical_frame"/>
-      <origin xyz="0 0 0" rpy="-1.570796326794897 0 -1.570796326794897"/>
+      <origin xyz="${optical_xyz}" rpy="${optical_rpy}"/>
     </joint>
+  </xacro:macro>
+
+  <xacro:macro name="myarm_wrist_camera"
+               params="parent_link mount_xyz:='0 0 0' mount_rpy:='0 0 0'
+                       camera_xyz:='0 0 0' camera_rpy:='0 0 0'
+                       optical_xyz:='0 0 0'
+                       optical_rpy:='-1.570796326794897 0 -1.570796326794897'">
+    <link name="wrist_camera_mount_link"/>
+    <joint name="gripper_to_wrist_camera_mount_joint" type="fixed">
+      <parent link="${parent_link}"/>
+      <child link="wrist_camera_mount_link"/>
+      <origin xyz="${mount_xyz}" rpy="${mount_rpy}"/>
+    </joint>
+
+    <xacro:myarm_camera_body_and_optical
+      parent_link="wrist_camera_mount_link"
+      camera_xyz="${camera_xyz}"
+      camera_rpy="${camera_rpy}"
+      optical_xyz="${optical_xyz}"
+      optical_rpy="${optical_rpy}"/>
   </xacro:macro>
 
   <!--
@@ -52,12 +71,16 @@
   -->
   <xacro:macro name="myarm_neugrasp_wrist_camera"
                params="mount_xyz:='0 0 0' mount_rpy:='0 0 0'
-                       camera_xyz:='0 0 0' camera_rpy:='0 0 0'">
+                       camera_xyz:='0 0 0' camera_rpy:='0 0 0'
+                       optical_xyz:='0 0 0'
+                       optical_rpy:='-1.570796326794897 0 -1.570796326794897'">
     <xacro:myarm_wrist_camera
       parent_link="gripper_base_link"
       mount_xyz="${mount_xyz}"
       mount_rpy="${mount_rpy}"
       camera_xyz="${camera_xyz}"
-      camera_rpy="${camera_rpy}"/>
+      camera_rpy="${camera_rpy}"
+      optical_xyz="${optical_xyz}"
+      optical_rpy="${optical_rpy}"/>
   </xacro:macro>
 </robot>

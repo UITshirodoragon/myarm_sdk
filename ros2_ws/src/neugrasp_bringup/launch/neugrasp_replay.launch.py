@@ -1,4 +1,4 @@
-"""Replay a completed NeuGrasp run without camera, inference or robot motion."""
+"""Replay run artifacts while the current bringup owns all frame relations."""
 
 from pathlib import Path
 
@@ -12,36 +12,53 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    """Start base-frame replay without assuming a legacy scene calibration."""
+    """Start artifact-only replay with the current robot and scene TF."""
     share = Path(get_package_share_directory("neugrasp_bringup"))
     rviz_share = Path(get_package_share_directory("myarm_rviz2"))
     run_dir = LaunchConfiguration("run_dir")
     scene_config = LaunchConfiguration("scene_config")
     enable_scene_frames = LaunchConfiguration("enable_scene_frames")
-    base_frame = LaunchConfiguration("base_frame")
-    allow_legacy_frame_relabel = LaunchConfiguration("allow_legacy_frame_relabel")
+    cloud_source = LaunchConfiguration("cloud_source")
+    voxel_resolution = LaunchConfiguration("voxel_resolution")
+    use_wrist_camera = LaunchConfiguration("use_wrist_camera")
+    camera_calibration = LaunchConfiguration("camera_calibration")
     start_rviz = LaunchConfiguration("start_rviz")
-    top_k = LaunchConfiguration("top_k")
     return LaunchDescription([
         DeclareLaunchArgument("run_dir", default_value=""),
-        DeclareLaunchArgument(
-            "base_frame",
-            default_value="base_link",
-            description="Legacy artifacts are authored in base_link; changing this is guarded.",
-        ),
-        DeclareLaunchArgument("allow_legacy_frame_relabel", default_value="false"),
         DeclareLaunchArgument(
             "scene_config", default_value=str(share / "config" / "neugrasp_scene.yaml")
         ),
         DeclareLaunchArgument(
+            "cloud_source",
+            default_value="auto",
+            description="Replay cloud source: auto (TSDF then PLY), tsdf, or ply.",
+        ),
+        DeclareLaunchArgument(
+            "voxel_resolution",
+            default_value="40",
+            description="Cubic voxel resolution for legacy PLY centering; must match its export.",
+        ),
+        DeclareLaunchArgument(
             "enable_scene_frames",
-            default_value="false",
+            default_value="true",
             description=(
-                "Opt in only after scene_config is verified to match the replay run; "
-                "legacy runs must not use the current deployment calibration by default."
+                "Publish workspace and volume frames from the current scene_config. "
+                "Run calibration and historical TF are never read."
             ),
         ),
-        DeclareLaunchArgument("top_k", default_value="50"),
+        DeclareLaunchArgument(
+            "use_wrist_camera",
+            default_value="false",
+            description=(
+                "Append the wrist-camera Xacro frames from the current named calibration; "
+                "never read a calibration from run_dir."
+            ),
+        ),
+        DeclareLaunchArgument(
+            "camera_calibration",
+            default_value="",
+            description="Required current calibration YAML when use_wrist_camera is true.",
+        ),
         DeclareLaunchArgument("start_rviz", default_value="false"),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(str(share / "launch" / "neugrasp_system.launch.py")),
@@ -51,7 +68,8 @@ def generate_launch_description():
                 "enable_motion_execution": "false",
                 "enable_cartesian_trajectory": "false",
                 "enable_cartesian_execution": "false",
-                "use_wrist_camera": "false",
+                "use_wrist_camera": use_wrist_camera,
+                "camera_calibration": camera_calibration,
                 "scene_config": scene_config,
                 "enable_scene_frames": enable_scene_frames,
             }.items(),
@@ -62,9 +80,9 @@ def generate_launch_description():
             name="neugrasp_replay",
             parameters=[{
                 "run_dir": run_dir,
-                "top_k": top_k,
-                "base_frame": base_frame,
-                "allow_legacy_frame_relabel": allow_legacy_frame_relabel,
+                "scene_config": scene_config,
+                "cloud_source": cloud_source,
+                "voxel_resolution": voxel_resolution,
             }],
             output="screen",
         ),

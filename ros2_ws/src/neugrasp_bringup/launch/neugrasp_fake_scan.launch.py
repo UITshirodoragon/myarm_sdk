@@ -12,7 +12,7 @@ from launch_ros.actions import Node
 
 
 def generate_launch_description():
-    """Start fake feedback, fake Cartesian execution, scene and scan coordinator.
+    """Start fake feedback, scene and the selected sequential scan path.
 
     The coordinator is idle until a `/neugrasp/scan_workspace` action goal is
     sent.  This launch is deliberately not a physical robot profile.
@@ -63,7 +63,10 @@ def generate_launch_description():
             package="myarm_neugrasp",
             executable="neugrasp_scan_node",
             name="neugrasp_scan",
-            parameters=[{"scan_config": scan_config}],
+            parameters=[{
+                "scan_config": scan_config,
+                "services_config": services_config,
+            }],
             output="screen",
         ),
         IncludeLaunchDescription(

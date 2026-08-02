@@ -9,21 +9,79 @@ frames:
   camera_optical: wrist_camera_optical_frame
 
 execution:
+  # one_shot_ik_joint_trajectory: one endpoint IK, then validated minimum-jerk
+  # joint trajectory through FollowJointTrajectory. This avoids sequential
+  # Cartesian IK waypoints, but still rejects an unreachable endpoint.
+  # cartesian_trajectory remains available for fake-only Cartesian diagnosis.
+  motion_planner: one_shot_ik_joint_trajectory
   # Each phase is sequential and repeated; this is a visual/fake-arm settle
   # delay rather than a physical camera exposure guarantee.
-  settle_time_s: 0.25
+  settle_time_s: 2.0
 
 trajectory:
-  active_profile: paper_phi180
+  active_profile: neugrasp_training_views_16_19
 
   spherical_convention:
     reference_frame: neugrasp_workspace
     azimuth_zero_axis: +x
-    azimuth_positive_direction: clockwise_about_positive_z
+    # REP-103/right-handed workspace: +X -> +Y is positive azimuth.
+    azimuth_positive_direction: counter_clockwise_about_positive_z
     polar_zero_axis: +z
     angle_unit: degree
 
   profiles:
+    # The single live NeuGrasp scan profile. It preserves the simulation-
+    # evaluation view identity/order (render_utils.py views 16..19) but uses
+    # r=0.40 m for the MyArm reachability trial. It is therefore not labelled
+    # an exact simulation-evaluation reproduction (that source uses r=0.50 m).
+    # Source angles are [240, 260, 280, 300] deg CCW; a common -90 deg yaw
+    # aligns their 270 deg center with the robot-facing 180 deg workspace arc.
+    neugrasp_simulation_views_16_19:
+      type: paper_spiral
+      profile_version: 2
+      source: simulation_evaluation_render_utils
+      source_view_ids: [16, 17, 18, 19]
+      view_keys: [view_16, view_17, view_18, view_19]
+      source_radius_m: 0.50
+      source_azimuth_deg_ccw: [240.0, 260.0, 280.0, 300.0]
+      alignment_yaw_deg_ccw: -90.0
+      radius_m: [0.45, 0.45, 0.45, 0.45]
+      polar_deg: [45.0, 35.0, 25.0, 15.0]
+      azimuth_deg: [150.0, 170.0, 190.0, 210.0]
+      look_at_m: [0.0, 0.0, 0.0]
+      capture_order: [view_16, view_17, view_18, view_19]
+      model_input_order: [view_16, view_17, view_18, view_19]
+      # Preserve the existing second-view query convention for this 4-view set.
+      query_view_key: view_17
+      settle_time_s: 2.0
+
+    # Packed-training 8x3 camera-bank interpretation of source IDs 16..19.
+    # The packed generator samples radius/beta/noise per scene, so this is a
+    # deterministic nominal profile, not a replacement for camera_pose.npy of
+    # an individual training scene. The profile name intentionally retains the
+    # requested public spelling "tranning" for action/API compatibility.
+    # Source azimuths [270, 292.5, 292.5, 315] deg CCW are jointly aligned by
+    # -112.5 deg, placing the nominal 292.5 deg center at robot-facing 180 deg.
+    neugrasp_training_views_16_19:
+      type: paper_spiral
+      profile_version: 1
+      source: packed_training_render_packed_std_rand
+      source_view_ids: [16, 17, 18, 19]
+      view_keys: [view_16, view_17, view_18, view_19]
+      source_radius_range_m: [0.40, 0.50]
+      source_polar_low_range_deg: [12.0, 16.0]
+      source_polar_high_range_deg: [41.0, 45.0]
+      source_azimuth_deg_ccw: [270.0, 292.5, 292.5, 315.0]
+      alignment_yaw_deg_ccw: -112.5
+      radius_m: [0.45, 0.45, 0.45, 0.45]
+      polar_deg: [28.5, 14.0, 43.0, 28.5]
+      azimuth_deg: [157.5, 180.0, 180.0, 202.5]
+      look_at_m: [0.0, 0.0, 0.0]
+      capture_order: [view_16, view_17, view_18, view_19]
+      model_input_order: [view_16, view_17, view_18, view_19]
+      query_view_key: view_17
+      settle_time_s: 2.0
+
     # A deterministic SDK benchmark/profile.  It is intentionally not claimed
     # to be a hardware-certified version of the NeuGrasp paper trajectory.
     paper_phi180:
@@ -32,7 +90,9 @@ trajectory:
       source_view_ids: [0, 1, 2, 3]
       radius_m: [0.45, 0.45, 0.45, 0.45]
       polar_deg: [15.0, 17.5, 20.0, 22.5]
-      azimuth_deg: [150.0, 170.0, 190.0, 210.0]
+      # Migrated from the former clockwise parser so each existing view keeps
+      # its physical pose after the SDK-wide move to ROS-standard CCW azimuth.
+      azimuth_deg: [210.0, 190.0, 170.0, 150.0]
       look_at_m: [0.0, 0.0, 0.0]
       capture_order: [0, 1, 2, 3]
       model_input_order: [0, 1, 2, 3]

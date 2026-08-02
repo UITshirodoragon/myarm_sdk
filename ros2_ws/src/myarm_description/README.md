@@ -15,23 +15,21 @@ xacro $(ros2 pkg prefix myarm_description)/share/myarm_description/urdf/myarm_m7
 ```
 
 `urdf/myarm_m750_neugrasp.urdf.xacro` là profile dành riêng cho NeuGrasp. Nó
-giữ cùng tên arguments để tương thích với wrapper generic, nhưng cố định parent
-camera là `gripper_base_link`:
+giữ parent camera là `gripper_base_link`. Nó hỗ trợ `generic` (transform từ
+calibration YAML) và các named model profile. Profile hiện có là
+`logitech_c925_wrist_v1`:
 
 ```bash
 xacro $(ros2 pkg prefix myarm_description)/share/myarm_description/urdf/myarm_m750_neugrasp.urdf.xacro \
   use_wrist_camera:=true \
-  wrist_camera_mount_xyz:="x y z" \
-  wrist_camera_mount_rpy:="roll pitch yaw" \
-  wrist_camera_xyz:="x y z" \
-  wrist_camera_rpy:="roll pitch yaw"
+  wrist_camera_profile:=logitech_c925_wrist_v1
 ```
 
 Camera có đúng một owner là `robot_state_publisher` qua URDF/Xacro:
 
 ```text
 gripper_base_link
-└── wrist_camera_mount_link
+└── logitech_c925_wrist_mount_link
     └── wrist_camera_link
         └── wrist_camera_optical_frame
 ```
@@ -43,19 +41,25 @@ T_gripper_base_optical =
   T_gripper_base_mount × T_mount_camera_body × T_camera_body_optical
 ```
 
-- `wrist_camera_mount_*`: transform bracket/mount đã calibration.
-- `wrist_camera_*`: offset từ mount đến body frame camera.
-- `camera_body → optical`: cố định trong macro theo REP-103 (`x` phải, `y`
-  xuống, `z` nhìn tới trước).
+- C925 mount nằm cố định và có tên riêng trong
+  `xacro/sensors/mounts/logitech_c925_wrist_mount.xacro`.
+- C925 body/optical nằm trong
+  `xacro/sensors/profiles/logitech_c925_wrist_camera.xacro`, gồm cả offset
+  đo được `wrist_camera_link -> wrist_camera_optical_frame`.
+- `generic` nhận `wrist_camera_mount_*`, `wrist_camera_*` và
+  `wrist_camera_optical_*` từ Xacro argument; đây là đường dành cho một model
+  camera chưa có profile riêng.
 
 Template [calibration](config/neugrasp_wrist_camera_calibration.template.yaml)
-quy định schema version, ID/hash provenance, trạng thái và hai transform đầu
-tiên. `calibration_sha256` là hash của canonical calibration payload, không
-tính chính field hash đó. Nó là template, không phải default dùng trên robot.
-Launch live phải từ chối calibration có
-`status != CALIBRATED`, ID/hash chưa điền, hoặc parent/frame không khớp.
-Profile fake có thể dùng một calibration riêng với `status: FAKE` và tên file
-rõ ràng.
+quy định schema version, ID/hash provenance, trạng thái, `camera_profile` và
+ba transform. Bản đo C925 được lưu tại
+`config/camera_profiles/logitech_c925_wrist_v1.measurement.yaml` với trạng
+thái `UNVERIFIED`; nó là dữ liệu tham chiếu, không phải default dùng trên
+robot. `calibration_sha256` là hash của canonical calibration payload, không
+tính chính field hash đó. Launch live phải từ chối calibration có
+`status != CALIBRATED`, ID/hash chưa điền, profile không hỗ trợ, hoặc
+parent/frame không khớp. Profile fake có thể dùng calibration riêng với
+`status: FAKE` và tên file rõ ràng.
 
 Không thêm `world`, workspace, volume, scan view, selected grasp hay object
 scene vào URDF/Xacro này. Các frame đó thuộc application runtime; scan view là

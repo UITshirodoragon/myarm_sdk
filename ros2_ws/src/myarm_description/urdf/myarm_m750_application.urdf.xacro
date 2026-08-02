@@ -12,6 +12,8 @@
   <xacro:arg name="wrist_camera_mount_rpy" default="0 0 0"/>
   <xacro:arg name="wrist_camera_xyz" default="0 0 0"/>
   <xacro:arg name="wrist_camera_rpy" default="0 0 0"/>
+  <xacro:arg name="wrist_camera_optical_xyz" default="0 0 0"/>
+  <xacro:arg name="wrist_camera_optical_rpy" default="-1.570796326794897 0 -1.570796326794897"/>
 
   <!-- Plain URDF on purpose: pycore and Pinocchio continue to consume it. -->
   <xacro:include filename="myarm_m750_poe_v3_2.urdf"/>
@@ -23,6 +25,8 @@
       mount_xyz="$(arg wrist_camera_mount_xyz)"
       mount_rpy="$(arg wrist_camera_mount_rpy)"
       camera_xyz="$(arg wrist_camera_xyz)"
-      camera_rpy="$(arg wrist_camera_rpy)"/>
+      camera_rpy="$(arg wrist_camera_rpy)"
+      optical_xyz="$(arg wrist_camera_optical_xyz)"
+      optical_rpy="$(arg wrist_camera_optical_rpy)"/>
   </xacro:if>
 </robot>

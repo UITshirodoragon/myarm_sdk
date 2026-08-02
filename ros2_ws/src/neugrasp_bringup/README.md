@@ -9,7 +9,7 @@ The runtime is deliberately phase-oriented:
 ```text
 scene_debug  -> inspect workspace and generated camera targets
 fake_scan    -> execute targets one-at-a-time against FakeRobotArm
-replay       -> inspect completed PLY/JSON artifacts without model or camera
+replay       -> feed saved images with the current scene/robot frame config
 ```
 
 Physical NeuGrasp motion is not enabled by this package.
@@ -20,7 +20,7 @@ Physical NeuGrasp motion is not enabled by this package.
 robot_state_publisher (NeuGrasp Xacro)
   base_link -> arm -> flange_link -> tool0
                               └-> gripper_base_link
-                                   -> wrist_camera_mount_link
+                                   -> logitech_c925_wrist_mount_link  (C925 profile)
                                    -> wrist_camera_link
                                    -> wrist_camera_optical_frame
 
@@ -57,6 +57,32 @@ myarm_description/urdf/myarm_m750_neugrasp.urdf.xacro
 It only adds fixed links below `gripper_base_link`; it never changes the arm,
 `tool0`, limits or baseline dynamic model.
 
+## Camera model profiles and fixed frames
+
+The camera subtree is composed as **robot + named mount + camera model**. The
+current measured profile is `logitech_c925_wrist_v1`:
+
+```text
+gripper_base_link
+  -> logitech_c925_wrist_mount_link
+  -> wrist_camera_link
+  -> wrist_camera_optical_frame
+```
+
+Its runtime transforms are fixed in Xacro, not published by a second static
+TF node:
+
+```text
+T_gripper_base_mount   = xyz[-0.0215, 0, -0.0214], rpy[0, -pi/2, 0]
+T_mount_camera_body    = xyz[0.00209, 0, 0.025], rpy[0, 0, 0]
+T_camera_body_optical  = xyz[0.04, 0, 0.03], rpy[-pi/2, 0, -pi/2]
+```
+
+`wrist_camera_link -> wrist_camera_optical_frame` is therefore an explicit
+measured fixed joint. Future camera models add their own named mount and
+profile under `myarm_description/urdf/xacro/sensors/{mounts,profiles}/`, while
+keeping the semantic body/optical frame names when used by NeuGrasp.
+
 When `use_wrist_camera:=true`, `neugrasp_system.launch.py` requires one
 calibration YAML. Start from:
 
@@ -88,8 +114,52 @@ print("sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest())
 PY
 ```
 
-`neugrasp_fake_wrist_camera_calibration.yaml` is a named simulation transform,
-not a real camera estimate.
+Every calibration record names `camera_profile`. `generic` consumes `mount`,
+`camera_body` and `camera_optical` from YAML. `logitech_c925_wrist_v1` selects
+the fixed model Xacro; the same values remain in YAML for provenance and must
+stay synchronized. The checked-in C925 measurement record is deliberately
+`UNVERIFIED`; it must not be marked `CALIBRATED` until physical TF validation
+has passed.
+
+`neugrasp_fake_wrist_camera_calibration.yaml` uses C925 geometry only for
+fake-arm visualization. Its `FAKE` status makes it unusable with a physical
+adapter.
+
+### Change camera geometry safely
+
+Treat mount, camera body and optical-frame values as one calibration change.
+Never add a second `static_transform_publisher` for these frames.
+
+1. For C925, edit the named mount/profile Xacros and mirror the measurement in
+   `config/camera_profiles/logitech_c925_wrist_v1.measurement.yaml`. For a new
+   model, add a new mount Xacro and camera-profile Xacro instead of changing
+   the C925 profile.
+2. Update the calibration record. A physical record requires
+   `status: CALIBRATED` and a regenerated `calibration_sha256`.
+3. Reinstall packages, generate the URDF explicitly, then validate it:
+
+   ```bash
+   cd /home/ktmt-agx-xv/Data/khoanhd/MyArmM750_Controller_Lab/myarm_sdk/ros2_ws
+   source /opt/ros/foxy/setup.bash
+   colcon build --packages-select myarm_description neugrasp_bringup myarm_neugrasp myarm_rviz2
+   source install/setup.bash
+
+   xacro "$(ros2 pkg prefix myarm_description)/share/myarm_description/urdf/myarm_m750_neugrasp.urdf.xacro" \
+     use_wrist_camera:=true wrist_camera_profile:=logitech_c925_wrist_v1 \
+     > /tmp/myarm_m750_neugrasp_c925.urdf
+   check_urdf /tmp/myarm_m750_neugrasp_c925.urdf
+   ```
+
+4. Start scene debug and confirm every camera frame has one parent before the
+   scan action:
+
+   ```bash
+   ros2 launch neugrasp_bringup neugrasp_scene_debug.launch.py start_rviz:=true
+   ```
+
+`colcon build` reinstalls Xacro/YAML; it does not change canonical v3.2
+kinematics. The `xacro ... > /tmp/*.urdf` command is the explicit URDF
+generation step and `check_urdf` validates the result.
 
 ## Scene debug: no motion
 
@@ -109,11 +179,12 @@ ros2 launch myarm_rviz2 neugrasp_rviz_remote.launch.py
 
 The viewer never starts RSP, TF, driver, planner or replay nodes.
 
-## Fake sequential scan
+## Fake sequential scan: one-shot IK + joint trajectory
 
-The fake launch starts one RSP, FakeRobotArm, the normal motion executor and
-its fake-only `FollowCartesianTrajectory` action. The scan node stays idle
-until a `ScanWorkspace` action goal arrives; it never moves on launch.
+The default fake launch starts one RSP, FakeRobotArm and the normal motion
+executor. The default scan path is `one_shot_ik_joint_trajectory`; it does not
+use `FollowCartesianTrajectory`. The scan node stays idle until a
+`ScanWorkspace` action goal arrives; it never moves on launch.
 
 ```bash
 ros2 launch neugrasp_bringup neugrasp_fake_scan.launch.py
@@ -124,7 +195,7 @@ First inspect all four targets without motion:
 ```bash
 ros2 action send_goal --feedback /neugrasp/scan_workspace \
   myarm_interfaces/action/ScanWorkspace \
-  "{profile_id: paper_phi180, execute_motion: false, capture_enabled: false, settle_time_s: -1.0}"
+  "{profile_id: neugrasp_simulation_views_16_19, execute_motion: false, capture_enabled: false, settle_time_s: -1.0}"
 ```
 
 Then execute the same sequence against the fake adapter:
@@ -132,7 +203,7 @@ Then execute the same sequence against the fake adapter:
 ```bash
 ros2 action send_goal --feedback /neugrasp/scan_workspace \
   myarm_interfaces/action/ScanWorkspace \
-  "{profile_id: paper_phi180, execute_motion: true, capture_enabled: false, settle_time_s: -1.0}"
+  "{profile_id: neugrasp_simulation_views_16_19, execute_motion: true, capture_enabled: false, settle_time_s: -1.0}"
 ```
 
 For each view the coordinator computes:
@@ -141,23 +212,63 @@ For each view the coordinator computes:
 workspace camera target
   -> base camera target
   -> base tool0 target using TF(tool0, wrist_camera_optical_frame)
-  -> /myarm/follow_cartesian_trajectory
+  -> one-shot IK from fresh /myarm/state/joint_state
+  -> validated minimum-jerk joint trajectory
+  -> /myarm/follow_joint_trajectory
   -> settle -> measured base->camera snapshot
 ```
 
-The coordinator never publishes a joint target/setpoint, opens no serial
-device, and never calls legacy `robot.py`. Cancellation cancels the active
-child action and requests the executor's normal cancel service.
+This eliminates the intermediate Cartesian waypoints that were producing
+`branch_discontinuity` or `joint_limit_blocked` in sequential CLIK. It cannot
+make an unreachable endpoint valid: endpoint IK still respects URDF hard
+limits and the configured safety margin. The coordinator never publishes a
+driver setpoint, opens no serial device, or calls legacy `robot.py`.
+Cancellation cancels the active child action and requests the executor's normal
+cancel service.
+
+`execution.motion_planner` in `neugrasp_scan_profiles.yaml` selects the path:
+
+```yaml
+motion_planner: one_shot_ik_joint_trajectory  # default
+# motion_planner: cartesian_trajectory         # fake-only CLIK diagnosis
+```
+
+For the Cartesian diagnostic path, change this field, rebuild/source the
+workspace, then relaunch fake scan. That path requires the fake-only
+`FollowCartesianTrajectory` server already exposed by the fake launch. The
+joint path uses the same canonical feedback, URDF limits, minimum-jerk planner
+and motion-execution safety gates as ordinary joint motion.
+
+When a joint scan fails, its `ScanWorkspace` action detail reports the endpoint
+IK failure, active joint limits, minimum margin and residual. Do not reduce the
+URDF limits or safety margin merely to make a scan pass; instead adjust the
+scan radius/alignment/workspace calibration or use a validated fixed
+camera-pose profile.
 
 `capture_enabled` currently records a phase boundary/feedback only; no camera
 is faked. This permits TF, trajectory and replay validation before live sensor
 integration.
 
-`paper_phi180` is a deterministic visualization/benchmark profile, not
-hardware-certified pose data. Add a calibrated `fixed_poses` profile only
-after reachability and camera/workspace validation. Do not import legacy
+`neugrasp_simulation_views_16_19` is the default deterministic scan profile. It preserves
+simulation-evaluation identities `view_16` through `view_19` from NeuGrasp
+`render_utils.py`, then rotates the complete source arc by `-90°` around +Z so
+its center is at robot-facing azimuth `180°`. Azimuth is ROS-standard
+counter-clockwise around +Z (`+X -> +Y`); its values are `[150, 170, 190, 210]`
+degrees, beta is `[45, 35, 25, 15]` degrees, and all live trial views use
+`r=0.40 m`. The source simulation evaluation uses `r=0.50 m`, so this profile
+must not be called an exact simulation reproduction. Its query view is
+`view_17`, the second view in the four-view set. Add a calibrated `fixed_poses`
+profile only after reachability and camera/workspace validation. Do not import legacy
 `planned_scan_trajectory.json` as a live profile: its azimuth and
 `T_eef_camera` convention differ.
+
+`neugrasp_tranning_views_16_19` is the separate nominal packed-training
+profile. It preserves packed-bank IDs `16` through `19`, uses `r=0.45 m`, beta
+`[28.5, 14, 43, 28.5]` degrees and ROS-CCW azimuth
+`[157.5, 180, 180, 202.5]` degrees after its common `-112.5°` alignment. The
+packed generator randomizes radius, beta and pose noise per scene; use that
+scene's recorded `camera_pose.npy` whenever exact training-scene reproduction
+is needed.
 
 ## Add a calibrated fixed profile
 
@@ -185,44 +296,90 @@ custom_fixed:
 every view exactly once. `query_view_key` is validated as a stable view key
 (or source view ID), not a hard-coded model-batch index.
 
+For a `paper_spiral` profile, optional `view_keys` preserves external
+simulator identifiers. Both `neugrasp_simulation_views_16_19` and
+`neugrasp_tranning_views_16_19` use this to publish `view_16` rather
+than renumbering that source view to `view_00` in feedback and metadata.
+
 ## Replay a completed run
 
-Replay starts no driver, camera or NeuGrasp inference model. It keeps only the
-robot-state publisher by default so recorded `base_link` data has frame
-context. It deliberately does **not** start the current deployment's workspace
-scene: its calibration may differ from the recorded run. It republishes old
-products at a low rate:
+Replay starts no driver, camera or NeuGrasp inference model. It starts the
+current robot description and, by default, the current `scene_config`; these
+are the only owners of robot/camera/workspace/volume frame relationships.
+
+Replay is a **geometric visualization** phase. It reads only the products
+needed by RViz:
+
+```text
+inference/tsdf_vol.npy                         local TSDF tensor
+inference/candidates.json                      postprocessed grasps
+inference/selected_grasp.json                  selected postprocessed grasp
+visualizations/tsdf_near_surface_base.ply      optional cloud fallback/source
+```
+
+It does not read or publish `calibration`, TF snapshots, scan metadata,
+planned/measured camera poses, background/capture images, or an inference-file
+manifest. In particular, neither `/neugrasp/replay/*/compressed` nor
+`/neugrasp/replay/inference_manifest` is published by this mode.
 
 ```bash
 ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
   run_dir:=/home/ktmt-agx-xv/Data/khoanhd/Octo_Lab/NeuGrasp_real_runtime_v0_1_3/NeuGrasp/real_runtime/runs/neugrasp_real_20260626_105154
 ```
 
-Sources, when present:
+Append `start_rviz:=true` to use the supplied NeuGrasp RViz profile. Its TSDF
+display is intentionally `Boxes`, not `Points`.
+
+The default `cloud_source:=auto` reconstructs a near-surface `PointCloud2`
+from `tsdf_vol.npy` and publishes it in the **current** local volume frame:
 
 ```text
-visualizations/tsdf_near_surface_base.ply
-inference/candidates.json
-inference/selected_grasp.json
-visualizations/grasp_candidates_wireframes_base.ply  (fallback)
+/neugrasp/tsdf_cloud                PointCloud2, header.frame_id=neugrasp_volume
+/neugrasp/grasp_candidates          MarkerArray, header.frame_id=neugrasp_volume
+/neugrasp/selected_grasp            PoseStamped, header.frame_id=neugrasp_volume
+/neugrasp/selected_grasp_marker     Marker, header.frame_id=neugrasp_volume
 ```
 
-The legacy TSDF PLY is already in `base_link`; replay publishes it to
-`/neugrasp/tsdf_cloud` without transforming it again. Candidate JSON becomes
-gripper wireframe markers in the semantic grasp frame. The raw legacy PLY is
-published separately as `/neugrasp/legacy_grasp_wireframes`: it encodes an
-older TCP visualization and must never be mixed into the grasp-frame topic.
-For a calibrated overlay, explicitly opt in only with a `scene_config` known
-to match that exact run:
+The cloud uses the current `workspace.bbox_m` in `scene_config` to derive its
+voxel spacing. Candidates use only `pose_cube_grasp` from JSON, which is local
+to the NeuGrasp volume. Historical `pose_table_grasp` and `pose_base_grasp` are
+intentionally discarded; no old run transform is imported.
+
+For the checked-in scene and NeuGrasp tensor, this is a cubic volume
+`0.30 m / 40 = 0.0075 m`. Replay publishes every TSDF point at the **center**
+of its voxel: `(index + 0.5) * 0.0075`. The supplied `neugrasp.rviz` displays
+`/neugrasp/tsdf_cloud` as `Boxes` with `Size (m): 0.0075`, so the rendered
+boxes occupy exactly `[0, 0.30]³` in `neugrasp_volume`. If either the scene
+bbox or tensor resolution changes, update the RViz box size to
+`bbox_edge_m / resolution` before visual inspection.
+
+If `tsdf_vol.npy` is absent or unsuitable, `auto` falls back to the legacy PLY.
+The PLY stores points in `base_link`; replay waits for the **current** TF
+`neugrasp_volume <- base_link`, converts the points once, then still publishes
+the cloud in `neugrasp_volume`. To force that source:
 
 ```bash
 ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
-  run_dir:=/path/to/run enable_scene_frames:=true scene_config:=/path/to/matching_scene.yaml
+  run_dir:=/path/to/run cloud_source:=ply \
+  scene_config:=/path/to/current_scene.yaml
 ```
 
-The replay node rejects arbitrary `base_frame` relabeling unless
-`allow_legacy_frame_relabel:=true` is explicitly supplied; legacy coordinates
-are immutable `base_link` coordinates.
+This PLY path assumes the recorded `base_link` coordinate contract is still
+meaningful for the current robot cell. It uses current TF only; it never reads
+or publishes a historical scene TF. `/neugrasp/replay/status` reports the
+selected source and whether PLY is waiting for current TF.
+
+To include the current wrist-camera Xacro profile in that TF tree, opt in with
+the current named calibration (never a YAML copied from `run_dir`):
+
+```bash
+ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
+  run_dir:=/path/to/run use_wrist_camera:=true \
+  camera_calibration:=/path/to/current_camera_calibration.yaml
+```
+
+Replay is visualization-only: the markers and selected pose must not be sent
+to the motion executor without a fresh reachability/IK and safety validation.
 
 ## RViz, messages and QoS
 
@@ -239,15 +396,11 @@ are immutable `base_link` coordinates.
 /neugrasp/grasp_candidates
 /neugrasp/selected_grasp
 /neugrasp/selected_grasp_marker
-/neugrasp/legacy_grasp_wireframes
 ```
 
-The workflow repeats small, sequential phases. The larger replay cloud uses
-volatile/best-effort delivery and is republished at a low rate; it has no
-high-rate DDS reliability contract. Small scan/marker snapshots use retained
-reliable delivery so a late RViz can see their current state, and the
-workspace marker is also refreshed at low rate. Do not continuously send raw
-`.npy`, `.ply` or tensors over DDS.
+The workflow repeats small, sequential phases. Replay cloud and marker
+snapshots use retained reliable delivery so a late RViz receives the current
+visualization. The raw `.npy`/`.ply` files are never streamed over DDS.
 
 ## Safety boundary
 

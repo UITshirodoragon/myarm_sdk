@@ -1,0 +1,19 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!--
+    Measured fixed bracket for the Logitech C925 wrist installation.
+
+    This mount is a named physical part, not a generic calibration argument.
+    Keep it as a separate macro so another camera model can add its own mount
+    without changing the robot's 6R baseline or this profile's provenance.
+  -->
+  <xacro:macro name="myarm_logitech_c925_wrist_mount" params="parent_link">
+    <link name="logitech_c925_wrist_mount_link"/>
+    <joint name="gripper_to_logitech_c925_wrist_mount_joint" type="fixed">
+      <parent link="${parent_link}"/>
+      <child link="logitech_c925_wrist_mount_link"/>
+      <origin xyz="-0.0215 0.000 -0.0214"
+              rpy="0.0 -1.5707963267948966 0.0"/>
+    </joint>
+  </xacro:macro>
+</robot>

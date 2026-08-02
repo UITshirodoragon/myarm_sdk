@@ -1,9 +1,9 @@
-"""Sequential, fake-only NeuGrasp scan coordinator.
+"""Sequential NeuGrasp scan coordinator.
 
 The node owns the application-level ScanWorkspace action, profile expansion
-and visualization messages.  It never publishes a robot joint target or opens
-a robot connection.  Motion is delegated one view at a time to the existing
-fake-only FollowCartesianTrajectory action owned by myarm_motion_execution.
+and visualization messages. It never publishes a driver setpoint or opens a
+robot connection. Motion is delegated one view at a time either to the
+fake-only Cartesian action or to one-shot IK plus FollowJointTrajectory.
 """
 
 from __future__ import annotations
@@ -17,17 +17,23 @@ from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 import rclpy
 import yaml
+from ament_index_python.packages import get_package_share_directory
 from builtin_interfaces.msg import Duration
+from control_msgs.action import FollowJointTrajectory
 from geometry_msgs.msg import Point, Pose, PoseArray, PoseStamped
 from myarm_interfaces.action import FollowCartesianTrajectory, ScanWorkspace
+from myarm_sdk.core import JointPositions, Pose as SdkPose, load_sdk_yaml
+from myarm_sdk.service import KinematicsService, JointTrajectoryPlannerService
 from rclpy.action import ActionClient, ActionServer, CancelResponse, GoalResponse
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from rclpy.time import Time
+from sensor_msgs.msg import JointState
 from std_srvs.srv import Trigger
 from tf2_ros import Buffer, TransformException, TransformListener
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from visualization_msgs.msg import Marker, MarkerArray
 
 from .math3d import RigidTransform, compose, finite_vector, inverse, optical_look_at
@@ -66,6 +72,15 @@ class ScanProfile:
     default_settle_time_s: float
 
 
+@dataclass(frozen=True)
+class ScanMotionResult:
+    """Normalized result returned by either delegated motion path."""
+
+    succeeded: bool
+    failure_reason: str
+    detail: str
+
+
 class NeugraspScanNode(Node):
     """Create visual scan targets and execute them serially against fake arm."""
 
@@ -77,6 +92,11 @@ class NeugraspScanNode(Node):
             "follow_cartesian_action", "/myarm/follow_cartesian_trajectory"
         )
         self.declare_parameter(
+            "follow_joint_trajectory_action", "/myarm/follow_joint_trajectory"
+        )
+        self.declare_parameter("services_config", "service/config/services.yaml")
+        self.declare_parameter("motion_planner", "")
+        self.declare_parameter(
             "motion_cancel_service", "/myarm/motion_execution/cancel"
         )
         self.declare_parameter("default_profile", "")
@@ -84,6 +104,13 @@ class NeugraspScanNode(Node):
 
         config_path = Path(str(self.get_parameter("scan_config").value)).expanduser()
         self._frames, self._profiles = self._load_config(config_path)
+        configured_motion_planner = self._load_motion_planner(config_path)
+        requested_motion_planner = str(
+            self.get_parameter("motion_planner").value
+        ).strip()
+        self._motion_planner = self._validate_motion_planner(
+            requested_motion_planner or configured_motion_planner
+        )
         requested_default = str(self.get_parameter("default_profile").value).strip()
         self._default_profile_id = requested_default or next(iter(self._profiles))
         if self._default_profile_id not in self._profiles:
@@ -99,6 +126,7 @@ class NeugraspScanNode(Node):
         self._goal_reserved = False
         self._active_goal = None
         self._active_child_goal = None
+        self._joint_planning_lock = threading.Lock()
 
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self, spin_thread=False)
@@ -116,12 +144,27 @@ class NeugraspScanNode(Node):
         )
 
         callback_group = ReentrantCallbackGroup()
-        self._cartesian_client = ActionClient(
-            self,
-            FollowCartesianTrajectory,
-            str(self.get_parameter("follow_cartesian_action").value),
-            callback_group=callback_group,
-        )
+        self._cartesian_client = None
+        self._joint_client = None
+        self._one_shot_ik = None
+        self._joint_trajectory_planner = None
+        self._latest_measured_joint_positions = None
+        self._latest_measured_at_s = None
+        if self._motion_planner == "cartesian_trajectory":
+            self._cartesian_client = ActionClient(
+                self,
+                FollowCartesianTrajectory,
+                str(self.get_parameter("follow_cartesian_action").value),
+                callback_group=callback_group,
+            )
+        else:
+            self._configure_one_shot_joint_path()
+            self._joint_client = ActionClient(
+                self,
+                FollowJointTrajectory,
+                str(self.get_parameter("follow_joint_trajectory_action").value),
+                callback_group=callback_group,
+            )
         self._motion_cancel_client = self.create_client(
             Trigger,
             str(self.get_parameter("motion_cancel_service").value),
@@ -138,9 +181,10 @@ class NeugraspScanNode(Node):
         )
         self._publish_profile_visualization(self._profiles[self._default_profile_id])
         self.get_logger().info(
-            "Neugrasp scan coordinator ready: profile={}, views={}, action={}".format(
+            "Neugrasp scan coordinator ready: profile={}, views={}, planner={}, action={}".format(
                 self._default_profile_id,
                 len(self._profiles[self._default_profile_id].views),
+                self._motion_planner,
                 self.get_parameter("action_name").value,
             )
         )
@@ -155,10 +199,138 @@ class NeugraspScanNode(Node):
             raise ValueError(f"{name} must be finite and positive")
         return normalized
 
+    @classmethod
+    def _load_motion_planner(cls, path: Path) -> str:
+        try:
+            with path.open("r", encoding="utf-8") as stream:
+                document = yaml.safe_load(stream)
+        except OSError as error:
+            raise ValueError(f"scan_config cannot be opened: {path}") from error
+        except yaml.YAMLError as error:
+            raise ValueError(f"scan_config is invalid YAML: {path}") from error
+        if not isinstance(document, dict):
+            raise TypeError("scan_config must be a mapping")
+        execution = cls._mapping_or_empty(document.get("execution"), "execution")
+        return str(execution.get("motion_planner", "cartesian_trajectory")).strip()
+
+    @staticmethod
+    def _validate_motion_planner(value: str) -> str:
+        supported = {"cartesian_trajectory", "one_shot_ik_joint_trajectory"}
+        if value not in supported:
+            raise ValueError(
+                "motion_planner must be one of {}, got {!r}".format(
+                    sorted(supported), value
+                )
+            )
+        return value
+
+    def _configure_one_shot_joint_path(self) -> None:
+        """Build private IK and joint-planning services for one scan view.
+
+        The services are pure and use the same SDK config/URDF metadata as the
+        robot-side nodes. The coordinator subscribes only to canonical measured
+        feedback and delegates the resulting full trajectory to the public
+        FollowJointTrajectory executor action.
+        """
+        services_document = load_sdk_yaml(
+            str(self.get_parameter("services_config").value)
+        )
+        services = self._mapping(services_document.get("services"), "services")
+        robot = self._mapping(services_document.get("robot"), "robot")
+        kinematics_config = self._mapping(
+            services.get("kinematics"), "services.kinematics"
+        )
+        planner_config = self._mapping(
+            services.get("joint_trajectory_planner"),
+            "services.joint_trajectory_planner",
+        )
+        self._one_shot_ik = KinematicsService.from_config(
+            service_config=kinematics_config,
+            package_share_directory=get_package_share_directory,
+            robot_config=robot,
+        )
+        self._joint_trajectory_planner = JointTrajectoryPlannerService.from_config(
+            service_config=planner_config,
+            joint_metadata=self._one_shot_ik.joint_metadata,
+        )
+        if self._one_shot_ik.base_frame != self._frames.base:
+            raise ValueError(
+                "one-shot IK base frame {!r} does not match scan base frame {!r}".format(
+                    self._one_shot_ik.base_frame, self._frames.base
+                )
+            )
+        if self._one_shot_ik.tool_frame != self._frames.tool:
+            raise ValueError(
+                "one-shot IK tool frame {!r} does not match scan tool frame {!r}".format(
+                    self._one_shot_ik.tool_frame, self._frames.tool
+                )
+            )
+        measured_topic = self._topic(
+            self._mapping(
+                kinematics_config.get("topics"), "services.kinematics.topics"
+            ).get("measured_joint_state"),
+            "services.kinematics.topics.measured_joint_state",
+        )
+        self.create_subscription(
+            JointState,
+            measured_topic,
+            self._one_shot_measured_joint_callback,
+            10,
+        )
+
+    def _one_shot_measured_joint_callback(self, message: JointState) -> None:
+        if self._one_shot_ik is None:
+            return
+        try:
+            joints = self._canonical_joint_positions_from_message(
+                message, self._one_shot_ik.joint_names
+            )
+            now_s = time.monotonic()
+            with self._state_lock:
+                self._one_shot_ik.update_measured_joint_positions(
+                    joints, received_at_monotonic_s=now_s
+                )
+                self._latest_measured_joint_positions = joints
+                self._latest_measured_at_s = now_s
+        except ValueError as error:
+            self.get_logger().warning(f"One-shot IK feedback rejected: {error}")
+
+    @staticmethod
+    def _canonical_joint_positions_from_message(
+        message: JointState, joint_names: Sequence[str]
+    ) -> JointPositions:
+        if message.name:
+            if len(message.name) != len(message.position):
+                raise ValueError("measured JointState name and position lengths differ")
+            if len(set(message.name)) != len(message.name):
+                raise ValueError("measured JointState contains duplicate joint names")
+            by_name = dict(zip(message.name, message.position))
+            missing = [name for name in joint_names if name not in by_name]
+            if missing:
+                raise ValueError(
+                    "measured JointState is missing arm joints: {}".format(
+                        ", ".join(missing)
+                    )
+                )
+            return JointPositions(tuple(by_name[name] for name in joint_names))
+        if len(message.position) != len(joint_names):
+            raise ValueError(
+                "unnamed measured JointState must contain exactly {} arm positions".format(
+                    len(joint_names)
+                )
+            )
+        return JointPositions(message.position)
+
     @staticmethod
     def _frame(value: Any, name: str) -> str:
         if not isinstance(value, str) or not value.strip() or value.startswith("/"):
             raise ValueError(f"{name} must be a non-empty relative TF frame")
+        return value.strip()
+
+    @staticmethod
+    def _topic(value: Any, name: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{name} must be a non-empty topic name")
         return value.strip()
 
     @classmethod
@@ -182,6 +354,12 @@ class NeugraspScanNode(Node):
             ),
         )
         trajectory = cls._mapping(document.get("trajectory"), "trajectory")
+        cls._validate_ros_spherical_convention(
+            cls._mapping(
+                trajectory.get("spherical_convention"),
+                "trajectory.spherical_convention",
+            )
+        )
         profiles_document = cls._mapping(trajectory.get("profiles"), "trajectory.profiles")
         default_settle = cls._nonnegative_float(
             cls._mapping_or_empty(document.get("execution"), "execution").get(
@@ -207,6 +385,31 @@ class NeugraspScanNode(Node):
             ordered_profiles.update(profiles)
             profiles = ordered_profiles
         return frames, profiles
+
+    @staticmethod
+    def _validate_ros_spherical_convention(convention: Mapping[str, Any]) -> None:
+        """Reject a config whose declared azimuth convention disagrees with ROS.
+
+        Scan positions live in a REP-103 workspace frame (+X forward, +Y left,
+        +Z up). Positive yaw about +Z therefore follows the right-hand rule:
+        +X toward +Y, counter-clockwise when viewed from +Z. This node has no
+        alternate convention switch; accepting one here would silently mirror
+        every camera target.
+        """
+        expected = {
+            "azimuth_zero_axis": "+x",
+            "azimuth_positive_direction": "counter_clockwise_about_positive_z",
+            "polar_zero_axis": "+z",
+            "angle_unit": "degree",
+        }
+        for field_name, expected_value in expected.items():
+            if convention.get(field_name) != expected_value:
+                raise ValueError(
+                    "trajectory.spherical_convention.{} must be {!r} for the "
+                    "ROS right-handed workspace convention".format(
+                        field_name, expected_value
+                    )
+                )
 
     @staticmethod
     def _mapping(value: Any, name: str) -> Mapping[str, Any]:
@@ -317,20 +520,37 @@ class NeugraspScanNode(Node):
         source_ids = profile.get("source_view_ids", list(range(len(polar))))
         if not isinstance(source_ids, list) or len(source_ids) != len(polar):
             raise ValueError(f"trajectory profile {profile_id}.source_view_ids length must match views")
+        raw_keys = profile.get("view_keys")
+        if raw_keys is None:
+            view_keys = [f"view_{index:02d}" for index in range(len(polar))]
+        else:
+            if not isinstance(raw_keys, list) or len(raw_keys) != len(polar):
+                raise ValueError(
+                    f"trajectory profile {profile_id}.view_keys length must match views"
+                )
+            if not all(isinstance(key, str) and key for key in raw_keys):
+                raise ValueError(
+                    f"trajectory profile {profile_id}.view_keys must be non-empty strings"
+                )
+            if len(set(raw_keys)) != len(raw_keys):
+                raise ValueError(
+                    f"trajectory profile {profile_id}.view_keys must be unique"
+                )
+            view_keys = list(raw_keys)
         views = []
         for index, (radius, theta_deg, phi_deg) in enumerate(zip(radii, polar, azimuth)):
             theta = math.radians(theta_deg)
             phi = math.radians(phi_deg)
-            # NeuGrasp application convention is clockwise around +Z; ROS +Y
-            # remains left, so the clockwise term is negative Y.
+            # Workspace follows REP-103: +X forward, +Y left, +Z up. Positive
+            # azimuth follows the right-hand rule about +Z: +X -> +Y.
             position = (
                 radius * math.sin(theta) * math.cos(phi),
-                -radius * math.sin(theta) * math.sin(phi),
+                radius * math.sin(theta) * math.sin(phi),
                 radius * math.cos(theta),
             )
             views.append(
                 ScanView(
-                    key=f"view_{index:02d}",
+                    key=view_keys[index],
                     source_view_id=str(source_ids[index]),
                     camera_workspace=RigidTransform(
                         translation=position,
@@ -452,12 +672,16 @@ class NeugraspScanNode(Node):
             elif not math.isfinite(settle_time_s):
                 return self._abort(goal_handle, result, "invalid_goal", "settle_time_s must be finite")
             if goal_handle.request.execute_motion:
-                if not self._wait_for_cartesian_server(goal_handle):
+                if not self._wait_for_motion_server(goal_handle):
                     return self._finish_canceled_or_abort(
                         goal_handle,
                         result,
-                        "cartesian_server_unavailable",
-                        "FollowCartesianTrajectory action server is unavailable",
+                        "motion_server_unavailable",
+                        "{} action server is unavailable".format(
+                            "FollowJointTrajectory"
+                            if self._motion_planner == "one_shot_ik_joint_trajectory"
+                            else "FollowCartesianTrajectory"
+                        ),
                     )
             workspace_to_base = self._lookup_transform(
                 self._frames.base, self._frames.workspace
@@ -488,7 +712,7 @@ class NeugraspScanNode(Node):
                     PoseStamped(),
                 )
                 if goal_handle.request.execute_motion:
-                    child_result = self._run_cartesian_view(
+                    child_result = self._run_motion_view(
                         goal_handle, planned_tool, view, capture_index, total
                     )
                     if child_result is None:
@@ -590,14 +814,191 @@ class NeugraspScanNode(Node):
                 self._active_child_goal = None
                 self._goal_reserved = False
 
-    def _wait_for_cartesian_server(self, goal_handle) -> bool:
+    def _wait_for_motion_server(self, goal_handle) -> bool:
         deadline = time.monotonic() + self._server_wait_timeout_s
+        client = (
+            self._joint_client
+            if self._motion_planner == "one_shot_ik_joint_trajectory"
+            else self._cartesian_client
+        )
+        if client is None:
+            return False
         while rclpy.ok() and time.monotonic() < deadline:
             if goal_handle.is_cancel_requested:
                 return False
-            if self._cartesian_client.wait_for_server(timeout_sec=0.1):
+            if client.wait_for_server(timeout_sec=0.1):
                 return True
         return False
+
+    def _run_motion_view(
+        self,
+        scan_goal,
+        target_pose: PoseStamped,
+        view: ScanView,
+        capture_index: int,
+        total: int,
+    ):
+        if self._motion_planner == "one_shot_ik_joint_trajectory":
+            return self._run_one_shot_joint_view(
+                scan_goal, target_pose, view, capture_index, total
+            )
+        return self._run_cartesian_view(
+            scan_goal, target_pose, view, capture_index, total
+        )
+
+    def _run_one_shot_joint_view(
+        self,
+        scan_goal,
+        target_pose: PoseStamped,
+        view: ScanView,
+        capture_index: int,
+        total: int,
+    ):
+        """Solve one endpoint IK, plan in joint space, then execute it.
+
+        Unlike CartesianSequentialCLIK, this path never asks the IK solver to
+        converge at intermediate Cartesian waypoints. It still rejects an
+        endpoint that is outside hard limits or the configured safety margin.
+        """
+        if self._one_shot_ik is None or self._joint_trajectory_planner is None:
+            return ScanMotionResult(
+                False, "joint_path_unavailable", "one-shot joint path is not configured"
+            )
+        if self._joint_client is None:
+            return ScanMotionResult(
+                False, "joint_action_unavailable", "FollowJointTrajectory client is unavailable"
+            )
+        try:
+            with self._joint_planning_lock:
+                sdk_target = self._sdk_pose_from_message(target_pose)
+                self._one_shot_ik.set_target_pose(sdk_target)
+                step = self._one_shot_ik.step(now_monotonic_s=time.monotonic())
+                ik_result = step.ik_result
+                if (
+                    ik_result is None
+                    or not ik_result.converged
+                    or step.joint_goal is None
+                    or step.measured_joint_positions is None
+                    or not step.measured_state_fresh
+                ):
+                    reason = (
+                        ik_result.failure_reason.value
+                        if ik_result is not None and ik_result.failure_reason is not None
+                        else "ik_failed"
+                    )
+                    detail = (
+                        ik_result.detail
+                        if ik_result is not None
+                        else "one-shot IK returned no result"
+                    )
+                    if ik_result is not None:
+                        detail = (
+                            "{}; active_joint_limits={}; "
+                            "minimum_joint_limit_margin_rad={:.9f}; "
+                            "position_residual_m={:.9f}; "
+                            "orientation_residual_rad={:.9f}"
+                        ).format(
+                            detail,
+                            ",".join(ik_result.active_joint_limits) or "none",
+                            ik_result.minimum_joint_limit_margin_rad,
+                            ik_result.position_residual_m,
+                            ik_result.orientation_residual_rad,
+                        )
+                    return ScanMotionResult(False, reason, detail)
+                plan = self._joint_trajectory_planner.plan_joint_motion(
+                    q_start=step.measured_joint_positions,
+                    q_goal=step.joint_goal,
+                )
+            if not plan.succeeded or plan.trajectory is None:
+                reason = plan.failure_reason.value if plan.failure_reason is not None else "joint_plan_failed"
+                return ScanMotionResult(False, reason, plan.detail)
+            child_goal = FollowJointTrajectory.Goal()
+            child_goal.trajectory = self._joint_trajectory_to_ros(plan.trajectory)
+        except (TypeError, ValueError) as error:
+            return ScanMotionResult(False, "one_shot_ik_invalid", str(error))
+
+        send_future = self._joint_client.send_goal_async(child_goal)
+        send_future.add_done_callback(
+            lambda future: self._cancel_late_child_if_parent_canceled(future, scan_goal)
+        )
+        if not self._wait_future(send_future, scan_goal):
+            self._cancel_late_child_if_parent_canceled(send_future, scan_goal)
+            return None
+        child_handle = send_future.result()
+        if child_handle is None or not child_handle.accepted:
+            return ScanMotionResult(
+                False, "goal_rejected", "FollowJointTrajectory rejected the view"
+            )
+        with self._state_lock:
+            self._active_child_goal = child_handle
+        self._feedback(
+            scan_goal,
+            view.key,
+            capture_index,
+            total,
+            "executing_joint_trajectory",
+            PoseStamped(),
+            target_pose,
+            PoseStamped(),
+        )
+        result_future = child_handle.get_result_async()
+        if not self._wait_future(result_future, scan_goal):
+            return None
+        wrapped = result_future.result()
+        with self._state_lock:
+            self._active_child_goal = None
+        if wrapped is None:
+            return ScanMotionResult(
+                False, "joint_action_no_result", "FollowJointTrajectory returned no result"
+            )
+        result = wrapped.result
+        succeeded = result.error_code == FollowJointTrajectory.Result.SUCCESSFUL
+        return ScanMotionResult(
+            succeeded,
+            "" if succeeded else "follow_joint_trajectory_failed",
+            str(result.error_string),
+        )
+
+    def _sdk_pose_from_message(self, message: PoseStamped) -> SdkPose:
+        if message.header.frame_id != self._frames.base:
+            raise ValueError(
+                "one-shot IK target must be expressed in {!r}, got {!r}".format(
+                    self._frames.base, message.header.frame_id
+                )
+            )
+        values = (
+            message.pose.position.x,
+            message.pose.position.y,
+            message.pose.position.z,
+            message.pose.orientation.x,
+            message.pose.orientation.y,
+            message.pose.orientation.z,
+            message.pose.orientation.w,
+        )
+        if not all(math.isfinite(value) for value in values):
+            raise ValueError("one-shot IK target contains non-finite values")
+        return SdkPose(
+            position=values[:3], orientation=values[3:]
+        )
+
+    @staticmethod
+    def _joint_trajectory_to_ros(trajectory):
+        message = JointTrajectory()
+        message.joint_names = list(trajectory.joint_names)
+        for point in trajectory.points:
+            ros_point = JointTrajectoryPoint()
+            ros_point.positions = list(point.positions.values)
+            ros_point.velocities = list(point.velocities.values)
+            ros_point.accelerations = list(point.accelerations.values)
+            seconds = int(point.time_from_start_s)
+            nanoseconds = int(round((point.time_from_start_s - seconds) * 1_000_000_000))
+            if nanoseconds == 1_000_000_000:
+                seconds += 1
+                nanoseconds = 0
+            ros_point.time_from_start.sec = seconds
+            ros_point.time_from_start.nanosec = nanoseconds
+            message.points.append(ros_point)
+        return message
 
     def _run_cartesian_view(
         self,
@@ -662,7 +1063,7 @@ class NeugraspScanNode(Node):
             child_handle = future.result()
         except Exception as error:  # noqa: BLE001 - action transport failed already.
             self.get_logger().warning(
-                f"Unable to inspect late Cartesian child goal response: {error}"
+                f"Unable to inspect late motion child goal response: {error}"
             )
             return
         if child_handle is None or not child_handle.accepted:
@@ -670,7 +1071,7 @@ class NeugraspScanNode(Node):
         try:
             child_handle.cancel_goal_async()
         except Exception as error:  # noqa: BLE001 - executor cancel remains a fallback.
-            self.get_logger().warning(f"Unable to cancel late Cartesian child goal: {error}")
+            self.get_logger().warning(f"Unable to cancel late motion child goal: {error}")
         self._request_motion_cancel()
 
     def _wait_future(self, future, scan_goal) -> bool:
@@ -693,7 +1094,7 @@ class NeugraspScanNode(Node):
             try:
                 child_goal.cancel_goal_async()
             except Exception as error:  # noqa: BLE001 - fallback is still required.
-                self.get_logger().warning(f"Unable to cancel Cartesian child action: {error}")
+                self.get_logger().warning(f"Unable to cancel motion child action: {error}")
         self._request_motion_cancel()
 
     def _request_motion_cancel(self) -> None:

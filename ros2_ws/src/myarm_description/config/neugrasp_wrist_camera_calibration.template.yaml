@@ -19,6 +19,11 @@ parent_frame: "gripper_base_link"
 camera_body_frame: "wrist_camera_link"
 camera_optical_frame: "wrist_camera_optical_frame"
 
+# ``generic`` consumes the three transforms below at launch. Named profiles
+# such as ``logitech_c925_wrist_v1`` use a fixed model Xacro; keep the values
+# mirrored here for calibration provenance and review.
+camera_profile: "generic"
+
 # T_gripper_base_mount: calibrated physical bracket/mount transform.
 mount:
   translation_m: [0.0, 0.0, 0.0]
@@ -30,5 +35,8 @@ camera_body:
   translation_m: [0.0, 0.0, 0.0]
   rpy_rad: [0.0, 0.0, 0.0]
 
-# T_camera_body_optical is owned by wrist_camera.xacro and follows REP-103:
-# x right, y down, z forward. Do not duplicate it in a static TF publisher.
+# T_camera_body_optical. Its default rotation follows REP-103: x right, y
+# down, z forward. Do not duplicate this transform in a static TF publisher.
+camera_optical:
+  translation_m: [0.0, 0.0, 0.0]
+  rpy_rad: [-1.570796326794897, 0.0, -1.570796326794897]

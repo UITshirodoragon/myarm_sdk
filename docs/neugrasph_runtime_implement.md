@@ -95,20 +95,22 @@ x=r\sin\theta\cos\phi
 ]
 
 [
-y=-r\sin\theta\sin\phi
+y=r\sin\theta\sin\phi
 ]
 
 [
 z=r\cos\theta
 ]
 
-Dấu âm ở thành phần `y` làm cho:
+Vì workspace ROS là hệ tay phải (`+X` trước, `+Y` trái, `+Z` lên), góc
+dương quanh `+Z` theo quy tắc bàn tay phải làm cho:
 
 ```text
-φ = 90° → -Y_ROS → phía phải robot
+φ = 90° → +Y_ROS → phía trái robot
 ```
 
-Đây chỉ là **quy ước sinh trajectory**. Các vị trí cuối cùng vẫn được lưu dưới dạng pose trong frame ROS tay phải.
+Đây là quy ước duy nhất của SDK, không phải một phép đảo trục riêng của
+NeuGrasp. Các vị trí cuối cùng được lưu dưới dạng pose trong frame ROS tay phải.
 
 Config nên khai báo tường minh:
 
@@ -116,12 +118,13 @@ Config nên khai báo tường minh:
 spherical_convention:
   reference_frame: neugrasp_workspace
   azimuth_zero_axis: +x
-  azimuth_positive_direction: clockwise_about_positive_z
+  azimuth_positive_direction: counter_clockwise_about_positive_z
   polar_zero_axis: +z
   angle_unit: degree
 ```
 
-Không nên để dấu âm của trục Y bị ẩn trong code mà không có thông tin trong config.
+Không được nhận một config clockwise trong khi code sinh pose theo ROS CCW; nó
+sẽ mirror toàn bộ trajectory qua mặt phẳng XZ.
 
 ---
 
@@ -540,7 +543,8 @@ Config phải hỗ trợ nhiều profile, ít nhất:
 
 ```text
 paper_phi180
-sim_views_16_19
+neugrasp_simulation_views_16_19
+neugrasp_tranning_views_16_19
 custom_fixed
 ```
 
@@ -569,13 +573,15 @@ Với setup của bạn, profile paper được xoay để tâm arc nằm tại:
 φ_span = 60°
 ```
 
-Một lựa chọn deterministic ban đầu:
+Giá trị canonical theo ROS CCW cho arc này là `150° → 210°`. Profile legacy
+`paper_phi180` bên dưới giữ nguyên từng pose vật lý sau khi migrate từ parser
+clockwise cũ, nên thứ tự azimuth là đảo ngược:
 
 ```text
-view 0: θ=15.0°, φ=150°
-view 1: θ=17.5°, φ=170°
-view 2: θ=20.0°, φ=190°
-view 3: θ=22.5°, φ=210°
+view 0: θ=15.0°, φ=210°
+view 1: θ=17.5°, φ=190°
+view 2: θ=20.0°, φ=170°
+view 3: θ=22.5°, φ=150°
 r = 0.45 m
 ```
 
@@ -596,7 +602,7 @@ paper_phi180:
     reference_range_m: [0.40, 0.50]
 
   polar_deg: [15.0, 17.5, 20.0, 22.5]
-  azimuth_deg: [150.0, 170.0, 190.0, 210.0]
+  azimuth_deg: [210.0, 190.0, 170.0, 150.0]
 
   capture_order: [0, 1, 2, 3]
   model_input_order: [0, 1, 2, 3]
@@ -617,65 +623,71 @@ Không dùng random không seed vì background và scene phải khớp camera po
 
 ---
 
-## 8.2. Profile sim: `sim_views_16_19`
+## 8.2. Profile simulation-evaluation: `neugrasp_simulation_views_16_19`
 
-Released dataset code sử dụng:
+`view_id` không đủ để suy ra pose nếu không chỉ rõ camera generator. Profile
+này lấy đúng thứ tự view `[16,17,18,19]` từ simulation evaluation
+`src/rd/render_utils.py`, không phải packed-training generator. Source đó có
+grid `6 × 4`, `r=0.50 m`, beta `[45,35,25,15]°` và azimuth ROS-CCW
+`[240,260,280,300]°`.
 
-```text
-[0, 1, 2, 3]
-```
-
-hoặc:
-
-```text
-[16, 17, 18, 19]
-```
-
-Trong evaluation, code chọn `[16,17,18,19]`.
-
-Để tái tạo sim chính xác nhất, không nên ước lượng lại pose chỉ từ `r, θ, φ`. Nên đọc trực tiếp:
-
-```text
-camera_pose.npy
-```
-
-và chọn:
-
-```python
-camera_pose[[16, 17, 18, 19]]
-```
-
-Lý do là generator còn có:
-
-* radius ngẫu nhiên trong `[0.4,0.5]`;
-* polar angles phụ thuộc scene;
-* rotation noise;
-* translation noise;
-* camera convention Blender.
-
-Config:
+Robot dùng một arc xoay chung `-90°` để tâm azimuth `270°` của source nằm ở
+azimuth `180°` đối diện robot. Vì thử reachability hiện tại dùng `r=0.40 m`,
+profile được gọi `neugrasp_simulation_views_16_19`, không tự nhận là simulation
+reproduction chính xác.
 
 ```yaml
-sim_views_16_19:
-  type: dataset_pose_file
-  profile_version: 1
-
+neugrasp_simulation_views_16_19:
+  type: paper_spiral
+  profile_version: 2
+  source: simulation_evaluation_render_utils
   source_view_ids: [16, 17, 18, 19]
-
-  pose_source:
-    path: /path/to/camera_pose.npy
-    convention: blender_camera_to_world
-
-  alignment:
-    reference_frame: neugrasp_workspace
-    target_center_azimuth_deg: 180.0
-
-  capture_order: [16, 17, 18, 19]
-  model_input_order: [16, 17, 18, 19]
-  query_view_key: 17
+  source_radius_m: 0.50
+  source_azimuth_deg_ccw: [240.0, 260.0, 280.0, 300.0]
+  alignment_yaw_deg_ccw: -90.0
+  radius_m: [0.40, 0.40, 0.40, 0.40]
+  polar_deg: [45.0, 35.0, 25.0, 15.0]
+  azimuth_deg: [150.0, 170.0, 190.0, 210.0]
+  look_at_m: [0.0, 0.0, 0.0]
+  capture_order: [view_16, view_17, view_18, view_19]
+  model_input_order: [view_16, view_17, view_18, view_19]
+  query_view_key: view_17
 ```
 
-Phép alignment phải là một rigid transform cho toàn bộ cụm pose. Không được chỉnh từng view độc lập vì sẽ làm thay đổi hình học tương đối của trajectory sim.
+Alignment là metadata/quy tắc sinh profile, không phải static TF hay URDF
+joint. Không được chỉnh từng view độc lập vì sẽ làm thay đổi hình học tương
+đối của trajectory.
+
+## 8.3. Profile packed-training: `neugrasp_tranning_views_16_19`
+
+Packed-training dùng camera bank `8 × 3`, khác simulation evaluation. Với
+`view_id = [16,17,18,19]`, source nominal có azimuth ROS-CCW
+`[270, 292.5, 292.5, 315]°` và beta `[mid, low, high, mid]`. Radius, beta và
+pose đều có randomization theo từng scene, nên `camera_pose.npy` của scene đó
+vẫn là source of truth nếu cần tái tạo chính xác.
+
+Profile nominal dưới đây dùng `r=0.45 m`, beta midpoint/nominal
+`[28.5,14,43,28.5]°` và alignment chung `-112.5°` để tâm cụm ở azimuth `180°`:
+
+```yaml
+neugrasp_tranning_views_16_19:
+  type: paper_spiral
+  source: packed_training_render_packed_std_rand
+  source_view_ids: [16, 17, 18, 19]
+  source_radius_range_m: [0.40, 0.50]
+  source_azimuth_deg_ccw: [270.0, 292.5, 292.5, 315.0]
+  alignment_yaw_deg_ccw: -112.5
+  radius_m: [0.45, 0.45, 0.45, 0.45]
+  polar_deg: [28.5, 14.0, 43.0, 28.5]
+  azimuth_deg: [157.5, 180.0, 180.0, 202.5]
+  look_at_m: [0.0, 0.0, 0.0]
+  capture_order: [view_16, view_17, view_18, view_19]
+  model_input_order: [view_16, view_17, view_18, view_19]
+  query_view_key: view_17
+```
+
+Tên `tranning` được giữ theo public profile ID đã chốt; không sửa thành
+`training` ở nội bộ để tránh làm sai lệnh action/config của người dùng.
 
 ---
 
@@ -823,6 +835,17 @@ voxel size:
 0.30 / 40 = 0.0075 m
 ```
 
+Khi hiển thị bằng RViz `PointCloud2` với `Style: Boxes`, point phải là tâm
+voxel, không phải min corner:
+
+```text
+p_volume = (index + 0.5) * 0.0075 m
+RViz Size (m) = 0.0075
+```
+
+Như vậy 40 box liên tiếp phủ đúng đoạn `[0, 0.30]` của
+`neugrasp_volume`, không lệch nửa voxel.
+
 Không nên tự suy luận channel order của `rot_vol_raw.npy`. Replay grasp nên ưu tiên dùng `candidates.json`, vì file này đã qua postprocess và chứa quaternion, translation, score và width rõ ràng.
 
 ---
@@ -876,13 +899,16 @@ x, y, z, RGB
 
 Tọa độ đã nằm trong base frame.
 
-Khi replay file này:
+Raw PLY vẫn có tọa độ `base_link`. Khi cần dùng PLY trong replay với scene
+hiện tại, node phải chờ TF hiện tại:
 
 ```text
-PointCloud2.header.frame_id = base_link
+T_neugrasp_volume_base_link
 ```
 
-và không transform thêm lần nữa.
+và đổi điểm sang `neugrasp_volume` trước khi publish. Không import TF hay
+calibration từ run cũ. Với PLY được export theo index corner của runtime cũ,
+thêm nửa voxel current-volume sau phép đổi để box RViz vẫn nằm tại voxel center.
 
 ---
 
@@ -1108,12 +1134,12 @@ workspace:
   volume_resolution: 40
 
 trajectory:
-  active_profile: paper_phi180
+  active_profile: neugrasp_simulation_views_16_19
 
   spherical_convention:
     reference_frame: neugrasp_workspace
     azimuth_zero_axis: +x
-    azimuth_positive_direction: clockwise_about_positive_z
+    azimuth_positive_direction: counter_clockwise_about_positive_z
     polar_zero_axis: +z
 
   profiles:
@@ -1122,21 +1148,42 @@ trajectory:
       profile_version: 1
       radius_m: [0.45, 0.45, 0.45, 0.45]
       polar_deg: [15.0, 17.5, 20.0, 22.5]
-      azimuth_deg: [150.0, 170.0, 190.0, 210.0]
+      azimuth_deg: [210.0, 190.0, 170.0, 150.0]
       capture_order: [0, 1, 2, 3]
       model_input_order: [0, 1, 2, 3]
       query_view_key: 1
 
-    sim_views_16_19:
-      type: dataset_pose_file
-      profile_version: 1
+    neugrasp_simulation_views_16_19:
+      type: paper_spiral
+      profile_version: 2
       source_view_ids: [16, 17, 18, 19]
-      pose_file: /path/to/camera_pose.npy
-      pose_convention: blender_camera_to_world
-      target_center_azimuth_deg: 180.0
-      capture_order: [16, 17, 18, 19]
-      model_input_order: [16, 17, 18, 19]
-      query_view_key: 17
+      source: simulation_evaluation_render_utils
+      source_radius_m: 0.50
+      source_azimuth_deg_ccw: [240.0, 260.0, 280.0, 300.0]
+      alignment_yaw_deg_ccw: -90.0
+      radius_m: [0.40, 0.40, 0.40, 0.40]
+      polar_deg: [45.0, 35.0, 25.0, 15.0]
+      azimuth_deg: [150.0, 170.0, 190.0, 210.0]
+      look_at_m: [0.0, 0.0, 0.0]
+      capture_order: [view_16, view_17, view_18, view_19]
+      model_input_order: [view_16, view_17, view_18, view_19]
+      query_view_key: view_17
+
+    neugrasp_tranning_views_16_19:
+      type: paper_spiral
+      profile_version: 1
+      source: packed_training_render_packed_std_rand
+      source_view_ids: [16, 17, 18, 19]
+      source_radius_range_m: [0.40, 0.50]
+      source_azimuth_deg_ccw: [270.0, 292.5, 292.5, 315.0]
+      alignment_yaw_deg_ccw: -112.5
+      radius_m: [0.45, 0.45, 0.45, 0.45]
+      polar_deg: [28.5, 14.0, 43.0, 28.5]
+      azimuth_deg: [157.5, 180.0, 180.0, 202.5]
+      look_at_m: [0.0, 0.0, 0.0]
+      capture_order: [view_16, view_17, view_18, view_19]
+      model_input_order: [view_16, view_17, view_18, view_19]
+      query_view_key: view_17
 
 replay:
   run_dir: /path/to/run
@@ -1164,7 +1211,8 @@ replay:
 ## Đã chốt
 
 1. ROS dùng `+X trước, +Y trái, +Z lên`.
-2. NeuGrasp azimuth dùng `φ=90°` ở phía phải bằng quy ước clockwise riêng.
+2. Azimuth scan dùng chuẩn ROS/REP-103: `φ=90°` ở phía `+Y` (trái robot),
+   tăng ngược chiều kim đồng hồ khi nhìn từ `+Z`.
 3. Robot nằm ở `φ=180°` khi xét từ tâm workspace.
 4. `world → base_link` có thể là identity.
 5. Camera nằm sau q6.
