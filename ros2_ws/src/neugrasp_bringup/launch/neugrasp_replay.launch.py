@@ -23,6 +23,7 @@ def generate_launch_description():
     use_wrist_camera = LaunchConfiguration("use_wrist_camera")
     camera_calibration = LaunchConfiguration("camera_calibration")
     start_rviz = LaunchConfiguration("start_rviz")
+    rviz_config = LaunchConfiguration("rviz_config")
     return LaunchDescription([
         DeclareLaunchArgument("run_dir", default_value=""),
         DeclareLaunchArgument(
@@ -60,6 +61,11 @@ def generate_launch_description():
             description="Required current calibration YAML when use_wrist_camera is true.",
         ),
         DeclareLaunchArgument("start_rviz", default_value="false"),
+        DeclareLaunchArgument(
+            "rviz_config",
+            default_value=str(rviz_share / "config" / "neugrasp.rviz"),
+            description="Absolute RViz2 configuration used when start_rviz is true.",
+        ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(str(share / "launch" / "neugrasp_system.launch.py")),
             launch_arguments={
@@ -89,6 +95,7 @@ def generate_launch_description():
             PythonLaunchDescriptionSource(
                 str(rviz_share / "launch" / "neugrasp_rviz_remote.launch.py")
             ),
+            launch_arguments={"rviz_config": rviz_config}.items(),
             condition=IfCondition(start_rviz),
         ),
     ])

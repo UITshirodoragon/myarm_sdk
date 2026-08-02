@@ -74,14 +74,8 @@ Visualization Manager:
 
     - Alpha: 1
       Class: rviz_default_plugins/RobotModel
-      Collision Enabled: false
-      Description File: ""
       Description Source: Topic
       Description Topic:
-        Depth: 1
-        Durability Policy: Transient Local
-        History Policy: Keep Last
-        Reliability Policy: Reliable
         Value: /robot_description
       Enabled: true
       Links:
@@ -99,18 +93,18 @@ Visualization Manager:
     - Alpha: 1
       Class: rviz_default_plugins/Marker
       Enabled: true
-      # RViz2 RosTopicProperty must be a map whose `Value` is the topic.
-      # A ROS1-style scalar here is silently loaded as an empty topic by RViz2.
-      Marker Topic:
-        Depth: 1
-        Durability Policy: Transient Local
+      Name: Neugrasp Scene
+      Namespaces:
+        workspace: true
+      Queue Size: 10
+      # ROS 2 Foxy Marker display stores this as a QoS-aware Topic property.
+      # This exact shape is produced by adding a Marker manually in RViz2.
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /neugrasp/workspace_marker
-      Name: Neugrasp Scene
-      Namespaces:
-        {}
-      Queue Size: 10
       Value: true
 
     # Both PLY files are converted by neugrasp_replay from source_frame to the
@@ -152,16 +146,16 @@ Visualization Manager:
     - Alpha: 1
       Class: rviz_default_plugins/Marker
       Enabled: true
-      Marker Topic:
-        Depth: 1
-        Durability Policy: Transient Local
+      Name: Grasp PLY Wireframes
+      Namespaces:
+        grasp_wireframes: true
+      Queue Size: 10
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
         History Policy: Keep Last
         Reliability Policy: Reliable
         Value: /neugrasp/grasp_wireframes
-      Name: Grasp PLY Wireframes
-      Namespaces:
-        {}
-      Queue Size: 10
       Value: true
   Global Options:
     Background Color: 48; 48; 48
