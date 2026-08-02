@@ -5,13 +5,10 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /Status1
         - /RobotModel1
-        - /Neugrasp Scene1
-        - /TSDF Voxels (7.5 mm)1
-        - /Raw Grasp Quality Voxels1
-        - /Grasp Candidates (volume)1
-        - /Scan Views1
+        - /NeuGrasp Scene1
+        - /TSDF PLY Voxels1
+        - /Grasp PLY Wireframes1
       Splitter Ratio: 0.5
     Tree Height: 760
   - Class: rviz_common/Selection
@@ -46,8 +43,6 @@ Visualization Manager:
       Reference Frame: <Fixed Frame>
       Value: true
 
-    # Keep TF deliberately sparse.  The scan targets are runtime data and are
-    # visualized below as poses/frustums, not as permanent scene TF frames.
     - Class: rviz_default_plugins/TF
       Enabled: true
       Frame Timeout: 15
@@ -61,10 +56,6 @@ Visualization Manager:
           Value: true
         gripper_base_link:
           Value: true
-        wrist_camera_mount_link:
-          Value: true
-        logitech_c925_wrist_mount_link:
-          Value: true
         wrist_camera_link:
           Value: true
         wrist_camera_optical_frame:
@@ -74,7 +65,7 @@ Visualization Manager:
         neugrasp_volume:
           Value: true
       Marker Scale: 0.07
-      Name: Semantic TF Frames
+      Name: Current Semantic TF Frames
       Show Arrows: true
       Show Axes: true
       Show Names: false
@@ -105,8 +96,6 @@ Visualization Manager:
       Value: true
       Visual Enabled: true
 
-    # Static application geometry.  The marker header determines whether it is
-    # expressed in base_link, neugrasp_workspace, or neugrasp_volume.
     - Alpha: 1
       Class: rviz_default_plugins/Marker
       Enabled: true
@@ -117,90 +106,26 @@ Visualization Manager:
       Queue Size: 10
       Value: true
 
-    # Runtime-generated scan targets: one frustum/order marker per view.
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Marker Topic: /neugrasp/scan_view_markers
-      Name: Scan View Frustums
-      Namespaces:
-        {}
-      Queue Size: 20
-      Value: true
-
-    - Alpha: 1
-      Arrow Color: 255; 210; 0
-      Arrow Length: 0.10
-      Arrow Radius: 0.012
-      Axes Length: 0.08
-      Axes Radius: 0.008
-      Class: rviz_default_plugins/PoseArray
-      Enabled: true
-      Name: Scan Target Poses
-      Shape: Axes
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Best Effort
-        Value: /neugrasp/scan_views
-      Value: true
-
-    - Alpha: 1
-      Arrow Color: 25; 255; 0
-      Arrow Length: 0.09
-      Arrow Radius: 0.010
-      Axes Length: 0.07
-      Axes Radius: 0.007
-      Class: rviz_default_plugins/PoseArray
-      Enabled: true
-      Name: Planned Camera Poses
-      Shape: Axes
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Best Effort
-        Value: /neugrasp/planned_camera_poses
-      Value: true
-
-    - Alpha: 1
-      Arrow Color: 0; 170; 255
-      Arrow Length: 0.09
-      Arrow Radius: 0.010
-      Axes Length: 0.07
-      Axes Radius: 0.007
-      Class: rviz_default_plugins/PoseArray
-      Enabled: true
-      Name: Measured Camera Poses
-      Shape: Axes
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Best Effort
-        Value: /neugrasp/measured_camera_poses
-      Value: true
-
-    # Replay publishes local TSDF voxel centers in neugrasp_volume.  The
-    # current scene is 0.30 m / 40 = 0.0075 m per cubic voxel; Boxes must keep
-    # this exact size so they fill the configured volume without gaps/overlap.
+    # Both PLY files are converted by neugrasp_replay from source_frame to the
+    # current target_frame before publication. RGB8 is correct here because
+    # this PLY contains packed RGB values, unlike scalar TSDF tensors.
     - Alpha: 0.82
-      Autocompute Intensity Bounds: false
+      Autocompute Intensity Bounds: true
       Autocompute Value Bounds:
-        Max Value: 0.2
-        Min Value: -0.2
-        Value: false
+        Max Value: 10
+        Min Value: -10
+        Value: true
       Axis: Z
-      Channel Name: tsdf
+      Channel Name: rgb
       Class: rviz_default_plugins/PointCloud2
       Color: 255; 255; 255
-      Color Transformer: Intensity
+      Color Transformer: RGB8
       Decay Time: 0
       Enabled: true
       Invert Rainbow: false
-      Name: TSDF Voxels (7.5 mm)
+      Name: TSDF PLY Voxels
       Position Transformer: XYZ
-      Queue Size: 5
+      Queue Size: 3
       Selectable: true
       Size (Pixels): 3
       Size (m): 0.0075
@@ -214,177 +139,17 @@ Visualization Manager:
       Use Fixed Frame: true
       Value: true
 
-    # This is raw model quality, not the postprocessed candidate score.  It is
-    # intentionally off by default; enable it to inspect why proposals emerge.
-    - Alpha: 0.45
-      Autocompute Intensity Bounds: false
-      Autocompute Value Bounds:
-        Max Value: 1
-        Min Value: 0
-        Value: false
-      Axis: Z
-      Channel Name: quality
-      Class: rviz_default_plugins/PointCloud2
-      Color: 255; 255; 255
-      Color Transformer: Intensity
-      Decay Time: 0
-      Enabled: false
-      Invert Rainbow: false
-      Name: Raw Grasp Quality Voxels
-      Position Transformer: XYZ
-      Queue Size: 3
-      Selectable: true
-      Size (Pixels): 3
-      Size (m): 0.0075
-      Style: Boxes
-      Topic:
-        Depth: 1
-        Durability Policy: Transient Local
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /neugrasp/grasp_quality_raw_cloud
-      Use Fixed Frame: true
-      Value: true
-
-    # candidates.json is replayed only through pose_cube_grasp, therefore the
-    # marker is local to neugrasp_volume and follows current scene TF.
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: true
-      Marker Topic: /neugrasp/grasp_candidates
-      Name: Grasp Candidates (volume)
-      Namespaces:
-        {}
-      Queue Size: 20
-      Value: true
-
-    # Optional diagnostic products exported by the old runtime.  They are
-    # transformed through current neugrasp_volume <- base_link TF, but remain
-    # disabled so they cannot be confused with canonical JSON-based grasps.
-    - Alpha: 0.55
-      Autocompute Intensity Bounds: true
-      Autocompute Value Bounds:
-        Max Value: 10
-        Min Value: -10
-        Value: true
-      Axis: Z
-      Channel Name: rgb
-      Class: rviz_default_plugins/PointCloud2
-      Color: 255; 255; 255
-      Color Transformer: RGB8
-      Decay Time: 0
-      Enabled: false
-      Invert Rainbow: false
-      Name: Legacy TSDF PLY (diagnostic)
-      Position Transformer: XYZ
-      Queue Size: 3
-      Selectable: true
-      Size (Pixels): 3
-      Size (m): 0.0075
-      Style: Boxes
-      Topic:
-        Depth: 1
-        Durability Policy: Transient Local
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /neugrasp/legacy_tsdf_ply_cloud
-      Use Fixed Frame: true
-      Value: true
-
-    - Class: rviz_default_plugins/MarkerArray
-      Enabled: false
-      Marker Topic: /neugrasp/legacy_grasp_wireframes
-      Name: Legacy Gripper PLY (diagnostic)
-      Namespaces:
-        {}
-      Queue Size: 20
-      Value: true
-
+    # `grasp_candidates_wireframes_base.ply` is an edge graph.  The replay
+    # node converts every endpoint through current target_frame <- source_frame
+    # TF before emitting this LINE_LIST marker.
     - Alpha: 1
       Class: rviz_default_plugins/Marker
       Enabled: true
-      Marker Topic: /neugrasp/selected_grasp_marker
-      Name: Selected Grasp (volume)
+      Marker Topic: /neugrasp/grasp_wireframes
+      Name: Grasp PLY Wireframes
       Namespaces:
         {}
       Queue Size: 10
-      Value: true
-
-    - Alpha: 1
-      Axes Length: 0.10
-      Axes Radius: 0.010
-      Class: rviz_default_plugins/Pose
-      Color: 255; 80; 80
-      Enabled: false
-      Head Length: 0.03
-      Head Radius: 0.015
-      Name: Selected Grasp Pose
-      Shaft Length: 0.08
-      Shaft Radius: 0.008
-      Shape: Arrow
-      Topic:
-        Depth: 3
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Best Effort
-        Value: /neugrasp/selected_grasp
-      Value: true
-
-    # Cartesian paths are latched by the existing planner/executor and remain
-    # useful for a scan-phase dry run or post-phase diagnosis.
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
-      Color: 25; 255; 0
-      Enabled: true
-      Head Diameter: 0.03
-      Head Length: 0.02
-      Length: 0.03
-      Line Style: Lines
-      Line Width: 0.015
-      Name: Cartesian Planner Reference
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 255; 85; 255
-      Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.01
-      Shaft Length: 0.02
-      Topic:
-        Depth: 1
-        Durability Policy: Transient Local
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /myarm/cartesian_trajectory/reference_path
-      Value: true
-
-    - Alpha: 1
-      Buffer Length: 1
-      Class: rviz_default_plugins/Path
-      Color: 0; 170; 255
-      Enabled: true
-      Head Diameter: 0.03
-      Head Length: 0.02
-      Length: 0.03
-      Line Style: Lines
-      Line Width: 0.02
-      Name: Cartesian Execution Reference
-      Offset:
-        X: 0
-        Y: 0
-        Z: 0
-      Pose Color: 0; 170; 255
-      Pose Style: None
-      Radius: 0.03
-      Shaft Diameter: 0.01
-      Shaft Length: 0.02
-      Topic:
-        Depth: 1
-        Durability Policy: Transient Local
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /myarm/cartesian_execution/reference_path
       Value: true
   Global Options:
     Background Color: 48; 48; 48

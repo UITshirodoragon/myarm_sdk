@@ -811,6 +811,10 @@ rotation của top grasp
 
 # 10. Replay `.npy` và `.ply` không chạy model
 
+SDK hiện tại chỉ triển khai replay PLY: `tsdf_near_surface_base.ply` và
+`grasp_candidates_wireframes_base.ply`. Các tensor/JSON dưới đây vẫn là output
+runtime hữu ích, nhưng không được node replay đọc hoặc publish.
+
 Run hiện tại chứa:
 
 | File                  |            Shape | Nội dung                 |
@@ -883,21 +887,8 @@ z         float32
 tsdf      float32
 ```
 
-Canonical TSDF cloud dùng `Color Transformer: Intensity`, channel `tsdf`, với
-range cố định theo ngưỡng near-surface (hiện tại `[-0.2, 0.2]`). Không dùng
-`RGB8` mặc định vì RGB chỉ là colormap tạo thêm, không phải giá trị TSDF.
-
-Raw quality là cloud riêng `/neugrasp/grasp_quality_raw_cloud`, fields:
-
-```text
-x, y, z    float32
-tsdf       float32
-quality    float32
-width_vox  float32
-```
-
-Cloud này chỉ lấy voxel near-surface có quality vượt preview threshold và phải
-được ghi rõ là **raw model quality**, không phải candidate score sau postprocess.
+Nếu sau này thêm replay tensor, canonical TSDF cloud nên dùng `Intensity` theo
+field `tsdf`. PLY-only replay hiện tại dùng `RGB8` vì PLY chứa RGB trực tiếp.
 
 ROS 2 cung cấp `PointCloud2` trong `sensor_msgs` để biểu diễn point-cloud dạng binary có layout mô tả bởi `PointField`. ([ROS 2 Documentation][5])
 
@@ -936,12 +927,12 @@ thêm nửa voxel current-volume sau phép đổi để box RViz vẫn nằm t�
 
 Đây là edge graph, không phải point cloud.
 
-Nên chuyển thành diagnostic riêng:
+PLY-only replay chuyển trực tiếp thành:
 
 ```text
 visualization_msgs/Marker
 type = LINE_LIST
-frame_id = neugrasp_volume  # sau current T_volume_base
+frame_id = neugrasp_volume  # sau current T_volume_base_link
 ```
 
 Mỗi edge `(a,b)` tạo hai phần tử liên tiếp:
@@ -953,24 +944,9 @@ points[2k+1] = vertex[b]
 
 RViz `LINE_LIST` nối các cặp điểm `0–1`, `2–3`, `4–5` theo đúng cấu trúc này. ([ROS Documentation][6])
 
-Tuy nhiên source canonical tốt hơn là:
-
-```text
-candidates.json
-```
-
-vì PLY đã làm mất:
-
-* score;
-* rank;
-* width;
-* pose cube/table/base;
-* selected state.
-
-Canonical marker dùng `pose_cube_grasp` rồi compose với `T_grasp_tcp` trong
-config hiện hành. Geometry parallel-jaw là `LINE_LIST` và phải clamp theo độ mở
-thực tế của MyArm: `max_opening_m = 0.080`. Không dùng `pose_base_grasp` hay
-`pose_base_tcp` trong run để tạo marker canonical.
+Node dùng đúng edge graph từ PLY, tạo một `Marker::LINE_LIST` màu cam.
+Mọi endpoint được đổi bằng TF hiện tại `T_neugrasp_volume_base_link`; node
+không đọc transform hoặc calibration nào trong run.
 
 Visualization node nên tạo:
 
@@ -1033,20 +1009,8 @@ Marker batch như `CUBE_LIST` hoặc `LINE_LIST` hiệu quả hơn tạo hàng n
 /neugrasp/tsdf_cloud
     sensor_msgs/PointCloud2
 
-/neugrasp/grasp_quality_raw_cloud
-    sensor_msgs/PointCloud2
-
-/neugrasp/grasp_candidates
-    visualization_msgs/MarkerArray
-
-/neugrasp/selected_grasp
-    geometry_msgs/PoseStamped
-
-/neugrasp/legacy_tsdf_ply_cloud
-    sensor_msgs/PointCloud2  # diagnostic, RViz disabled by default
-
-/neugrasp/legacy_grasp_wireframes
-    visualization_msgs/MarkerArray  # diagnostic, RViz disabled by default
+/neugrasp/grasp_wireframes
+    visualization_msgs/Marker
 
 /neugrasp/replay/status
     std_msgs/String

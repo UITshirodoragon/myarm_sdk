@@ -307,82 +307,51 @@ Replay starts no driver, camera or NeuGrasp inference model. It starts the
 current robot description and, by default, the current `scene_config`; these
 are the only owners of robot/camera/workspace/volume frame relationships.
 
-Replay is a **geometric visualization** phase. It reads only the products
-needed by RViz:
+Replay is a **two-file PLY visualization** phase. It reads exactly:
 
 ```text
-inference/tsdf_vol.npy                         local TSDF tensor
-inference/qual_vol_raw.npy                     raw model grasp-quality tensor
-inference/width_vol_raw.npy                    raw model opening-width tensor
-inference/candidates.json                      postprocessed grasps
-inference/selected_grasp.json                  selected postprocessed grasp
-visualizations/tsdf_near_surface_base.ply      legacy TSDF diagnostic
-visualizations/grasp_candidates_wireframes_base.ply  legacy gripper diagnostic
+visualizations/tsdf_near_surface_base.ply
+visualizations/grasp_candidates_wireframes_base.ply
 ```
 
-It does not read or publish `calibration`, TF snapshots, scan metadata,
-planned/measured camera poses, background/capture images, or an inference-file
-manifest. In particular, neither `/neugrasp/replay/*/compressed` nor
-`/neugrasp/replay/inference_manifest` is published by this mode.
+It does not read any `.npy`, JSON candidate, calibration, TF snapshot, scan
+metadata, image, or inference manifest from the run.
 
 ```bash
 ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
   run_dir:=/home/ktmt-agx-xv/Data/khoanhd/Octo_Lab/NeuGrasp_real_runtime_v0_1_3/NeuGrasp/real_runtime/runs/neugrasp_real_20260626_105154
 ```
 
-Append `start_rviz:=true` to use the supplied NeuGrasp RViz profile. Its TSDF
-display is intentionally `Boxes`, not `Points`.
+Append `start_rviz:=true` to use the supplied PLY-only NeuGrasp RViz profile.
 
-Replay reconstructs near-surface `PointCloud2` messages from `tsdf_vol.npy`
-and publishes canonical products in the **current** local volume frame:
+Both PLY files are documented by the legacy runtime as `base_link` products.
+The replay node waits for the **current** transform:
 
 ```text
-/neugrasp/tsdf_cloud                PointCloud2, header.frame_id=neugrasp_volume
-/neugrasp/grasp_quality_raw_cloud   PointCloud2, header.frame_id=neugrasp_volume
-/neugrasp/grasp_candidates          MarkerArray, header.frame_id=neugrasp_volume
-/neugrasp/selected_grasp            PoseStamped, header.frame_id=neugrasp_volume
-/neugrasp/selected_grasp_marker     Marker, header.frame_id=neugrasp_volume
+T_target_frame_source_frame
+T_neugrasp_volume_base_link     # default
 ```
 
-The cloud uses the current `workspace.bbox_m` in `scene_config` to derive its
-voxel spacing. Candidates use only `pose_cube_grasp` from JSON, which is local
-to the NeuGrasp volume. Historical `pose_table_grasp` and `pose_base_grasp` are
-intentionally discarded; no old run transform is imported.
+and transforms every PLY vertex before publishing. Therefore both ROS headers
+are `neugrasp_volume` by default, but no run TF/calibration is consumed:
 
-For the checked-in scene and NeuGrasp tensor, this is a cubic volume
-`0.30 m / 40 = 0.0075 m`. Replay publishes every TSDF point at the **center**
-of its voxel: `(index + 0.5) * 0.0075`. The supplied `neugrasp.rviz` displays
-`/neugrasp/tsdf_cloud` as `Boxes` with `Size (m): 0.0075`, so the rendered
-boxes occupy exactly `[0, 0.30]³` in `neugrasp_volume`. If either the scene
-bbox or tensor resolution changes, update the RViz box size to
-`bbox_edge_m / resolution` before visual inspection.
+```text
+/neugrasp/tsdf_cloud          sensor_msgs/PointCloud2, packed PLY RGB
+/neugrasp/grasp_wireframes    visualization_msgs/Marker, LINE_LIST
+```
 
-The canonical TSDF display uses `Color Transformer: Intensity` and channel
-`tsdf` fixed to `[-0.2, 0.2]`; it does not use an artificial RGB colormap.
-The optional raw-quality display uses channel `quality`, range `[0,1]`, and is
-disabled by default. It is a debugging product, not the postprocessed score
-used to choose a grasp. `rot_vol_raw.npy` is not visualized because its raw
-quaternion-channel convention is not a ROS contract.
+RViz uses `RGB8` only for `/neugrasp/tsdf_cloud` because RGB is a native field
+of `tsdf_near_surface_base.ply`; it is not a scalar TSDF rendering mode. The
+wireframe PLY is published as an orange `LINE_LIST`, exactly following its edge
+graph. The default RViz profile contains no TSDF tensor, quality cloud,
+candidate JSON, selected-grasp, scan-pose, or trajectory display.
 
-Candidate markers use only `pose_cube_grasp`, then compose it with the current
-`grasp_tcp` transform in `neugrasp_grasp_visualization.yaml`. The same file
-defines the RViz-only parallel-jaw wireframe and clamps every opening to the
-measured MyArm limit `max_opening_m: 0.080`. The selected marker is orange;
-candidate colour represents score. Do not substitute historical
-`pose_table_grasp`, `pose_base_grasp`, or `pose_base_tcp`.
-
-The two PLY files publish separately as diagnostics:
+If your current scene uses different frame names, override the node contract:
 
 ```bash
-/neugrasp/legacy_tsdf_ply_cloud
-/neugrasp/legacy_grasp_wireframes
+ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
+  run_dir:=/path/to/run source_frame:=base_link target_frame:=neugrasp_volume
 ```
-
-Their input coordinates are historical `base_link`; replay waits for current
-`neugrasp_volume <- base_link` TF before publishing. RViz keeps both displays
-off by default. They support comparison only and never replace the canonical
-JSON-based candidate markers. `/neugrasp/replay/status` reports whether they
-are waiting for current TF.
 
 To include the current wrist-camera Xacro profile in that TF tree, opt in with
 the current named calibration (never a YAML copied from `run_dir`):
@@ -393,8 +362,7 @@ ros2 launch neugrasp_bringup neugrasp_replay.launch.py \
   camera_calibration:=/path/to/current_camera_calibration.yaml
 ```
 
-Replay is visualization-only: the markers and selected pose must not be sent
-to the motion executor without a fresh reachability/IK and safety validation.
+Replay is visualization-only: neither PLY product is a motion command.
 
 ## RViz, messages and QoS
 
@@ -402,22 +370,12 @@ to the motion executor without a fresh reachability/IK and safety validation.
 
 ```text
 /neugrasp/workspace_marker
-/neugrasp/scan_views
-/neugrasp/scan_view_markers
-/neugrasp/planned_camera_poses
-/neugrasp/measured_camera_poses
 /neugrasp/tsdf_cloud
-/neugrasp/grasp_quality_raw_cloud
-/neugrasp/grasp_candidates
-/neugrasp/selected_grasp
-/neugrasp/selected_grasp_marker
-/neugrasp/legacy_tsdf_ply_cloud
-/neugrasp/legacy_grasp_wireframes
+/neugrasp/grasp_wireframes
 ```
 
-The workflow repeats small, sequential phases. Replay cloud and marker
-snapshots use retained reliable delivery so a late RViz receives the current
-visualization. The raw `.npy`/`.ply` files are never streamed over DDS.
+Replay cloud and marker snapshots use retained reliable delivery and are
+republished at 1 Hz. The two raw PLY files are never streamed over DDS.
 
 ## Safety boundary
 

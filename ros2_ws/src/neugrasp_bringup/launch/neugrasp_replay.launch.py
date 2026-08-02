@@ -18,8 +18,8 @@ def generate_launch_description():
     run_dir = LaunchConfiguration("run_dir")
     scene_config = LaunchConfiguration("scene_config")
     enable_scene_frames = LaunchConfiguration("enable_scene_frames")
-    voxel_resolution = LaunchConfiguration("voxel_resolution")
-    grasp_visualization_config = LaunchConfiguration("grasp_visualization_config")
+    source_frame = LaunchConfiguration("source_frame")
+    target_frame = LaunchConfiguration("target_frame")
     use_wrist_camera = LaunchConfiguration("use_wrist_camera")
     camera_calibration = LaunchConfiguration("camera_calibration")
     start_rviz = LaunchConfiguration("start_rviz")
@@ -29,14 +29,14 @@ def generate_launch_description():
             "scene_config", default_value=str(share / "config" / "neugrasp_scene.yaml")
         ),
         DeclareLaunchArgument(
-            "voxel_resolution",
-            default_value="40",
-            description="Cubic voxel resolution for legacy PLY centering; must match its export.",
+            "source_frame",
+            default_value="base_link",
+            description="Known coordinate frame encoded by both legacy PLY files.",
         ),
         DeclareLaunchArgument(
-            "grasp_visualization_config",
-            default_value=str(share / "config" / "neugrasp_grasp_visualization.yaml"),
-            description="Current grasp-to-TCP convention and RViz wireframe geometry.",
+            "target_frame",
+            default_value="neugrasp_volume",
+            description="Current scene frame used in every replay message header.",
         ),
         DeclareLaunchArgument(
             "enable_scene_frames",
@@ -80,9 +80,8 @@ def generate_launch_description():
             name="neugrasp_replay",
             parameters=[{
                 "run_dir": run_dir,
-                "scene_config": scene_config,
-                "voxel_resolution": voxel_resolution,
-                "grasp_visualization_config": grasp_visualization_config,
+                "source_frame": source_frame,
+                "target_frame": target_frame,
             }],
             output="screen",
         ),
