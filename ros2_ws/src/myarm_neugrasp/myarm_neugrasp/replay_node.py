@@ -103,9 +103,8 @@ class NeugraspReplayNode(Node):
         self._grasp_marker = self._grasp_marker_message(target_from_source)
         self._converted = True
         self.get_logger().info(
-            "Converted both PLY files with current TF %s <- %s",
-            self._target_frame,
-            self._source_frame,
+            f"Converted both PLY files with current TF "
+            f"{self._target_frame} <- {self._source_frame}"
         )
 
     def _cloud_message(self, rows: Iterable[Tuple[float, float, float, int]]) -> PointCloud2:
